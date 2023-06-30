@@ -22,18 +22,17 @@ class Window(object): #QWidget):
     
     
     def __init__(self, windowKey, uiFilepath, *args, **kwargs):
-        #super(Window, self).__init__(*args, **kwargs)
-        self.AddWindow(windowKey, self)
+        self.add_window(windowKey, self)
         
         loader = QUiLoader()
         file = QFile(uiFilepath)
         file.open(QFile.ReadOnly)
-        self.mainWindow = self.GetMayaWindow()
+        self.mainWindow = self.get_maya_window()
         self.ui = loader.load( file, parentWidget = self.mainWindow )  
         file.close()     
   
     @classmethod
-    def AddWindow(cls, windowKey, instance):
+    def add_window(cls, windowKey, instance):
         if windowKey in cls.CUSTOM_WINDOWS:
             try:
                 cls.CUSTOM_WINDOWS[windowKey].ui.deleteLater()     
@@ -44,10 +43,10 @@ class Window(object): #QWidget):
         
    
     @classmethod
-    def GetMayaWindow(cls):
+    def get_maya_window(cls):
         if not cls.mayaWindow:
             _mayaMainWindowPtr = omui.MQtUtil.mainWindow()
-            cls.mayaWindow     = wrapInstance( int(_mayaMainWindowPtr), QMainWindow)   #wrapInstance(long(_mayaMainWindowPtr), QWidget)   
+            cls.mayaWindow     = wrapInstance( int(_mayaMainWindowPtr), QMainWindow) 
             
         return cls.mayaWindow
     

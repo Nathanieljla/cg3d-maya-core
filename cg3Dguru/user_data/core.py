@@ -117,8 +117,7 @@ class Record(object):
     def __init__(self, attr):
         self._attr = attr
         self._name, str_version = attr.get().split(':')
-        values = str_version.split('.')
-        self._version = (int(values[0]),  int(values[1]),  int(values[2]))
+        self._version = tuple(map(int, str_version.split('.')))
         
 
     @property
