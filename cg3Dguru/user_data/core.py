@@ -1,11 +1,33 @@
-import pymel.core as pm
-#import exceptions
+"""The user_data module creates and manages Maya attributes in a pythonic way
 
+Adding and managing custom attributes in Maya through Maya's standard low
+level functions such as addAttr() has a few drawbacks that this higher-level
+module attempts to overcome. These noteable improvements include:
+
+1. user_data handles all the back-end work of reading and writing
+user_data.Base class attributes to Maya attributes. Programmers and
+Tech-artists can simply search for their Python instances inside of a Maya
+scene or on a given node and work with the results.
+
+2. Attributes in the attributes editor are organized under a compound
+attribute, making it easy for end-users to understand how blocks of
+attributes related to one another.
+
+3. Built-in versioning support. Outdated attributes can easily be
+identified and updated to match their Python equivalent as code evolves. 
 """
-#don't change unless your project really desires an alternative name
-#for the life of all scripts and tools that leverage the user_data module.
-#you must change whenever getting an updated version of the module.
-"""
+
+__author__ = "Nathaniel Albright"
+__email__ = "developer@3dcg.guru"
+__version__ = 0.9.0
+
+
+import pymel.core as pm
+
+
+#Don't change _RECORDS_NAME unless your project really desires an alternative
+#name for the life of all scripts and tools that leverage the user_data module.
+#And remember to change whenever getting an updated version of the module.
 _RECORDS_NAME      = 'DataRecords'
 _DEFAULT_NODE_TYPE = 'network'
 
