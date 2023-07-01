@@ -21,9 +21,7 @@ __author__ = "Nathaniel Albright"
 __email__ = "developer@3dcg.guru"
 __version__ = 0.9.0
 
-
 import pymel.core as pm
-
 
 #Don't change _RECORDS_NAME unless your project really desires an alternative
 #name for the life of all scripts and tools that leverage the user_data module.
@@ -33,7 +31,6 @@ _RECORDS_NAME      = 'DataRecords'
 
 _DEFAULT_NODE_TYPE = 'network'
 """The nodeType that will be created when creating a node for data storing"""
-
 
 AUTO_UPDATE = False
 """Should versioning attempt to auto update.
@@ -53,24 +50,36 @@ class VersionUpdateException(Exception):
 class Attr(object):
     """A Wrapper for Maya's attribute arguements"""
     
+    data_types = set(['string', 'stringArray', 'matrix', 'fltMatrix',
+                      'reflectanceRGB', 'spectrumRGB', 'float2', 'float3', 'double2',
+                      'double3', 'long2', 'long3', 'short2', 'short3' 'doubleArray',\
+                      'floatArray', 'Int32Array', 'vectorArray', 'nurbsCurve', 'nurbsSurface',\
+                      'mesh', 'lattice', 'pointArray']
+                     )
+    """A list of attributeType names that are of type 'data'
+    
+    If an attr.attr_type is found in Attr.data_types then the 'dt' flag
+    is automatically added to the args when creating the Maya attribute, else
+    the 'at' flag is used.
+    """
+        
     def __init__(self, name, attr_type, *args, **kwargs):
         """The init func can take any arguments used in maya.cmds.addAttr()
                 
         Users don't need to include the following flags:
         
-        -longName : this is instead derived from the Attr.name.
-        -attributeType : this is instead derived from Attr.attr_type.
-        -dataType : this is determined by the class being Attr() or Compound()
-        -parent : Determined by the Compound class parent-child structure
-        -numberOfChildren : Determined by the Compound class parent-child structure
+        -longName or -ln : this is instead derived from the Attr.name.
+        -attributeType or -at : this is determined by inspecting Attr.attr_type.
+        -dataType or -dt : this is determined by inspecting Attr.attr_type.
+        -parent or -p: Determined by the Compound class parent-child structure
+        -numberOfChildren or -nc : Determined by the Compound class parent-child structure
         """
         
         self.name = name
-        self.attrType = attr_type
+        self.attr_type = attr_type
         self.args = args
         self._flags = kwargs
         self._clear_invalid_flags(self._flags)
-
 
 
     def _clear_invalid_flags(self, flags):
@@ -81,9 +90,8 @@ class Attr(object):
         
         
         
-        
 class Compound(Attr):
-    """A sub-class of Attr, which can contain children attributes
+    """An attribute class that contain children attributes.
     
     For any attributeType other than 'compound', users don't need to create
     the children attributes. For example: Compound("space", 'float3') will
@@ -97,7 +105,7 @@ class Compound(Attr):
                      'long2':2, 'long3':3,
                      'short2':2, 'short3':3
                     }
-    """A Dict of valid compound attr types and how many children to create"""
+    """A Dict of valid compound attr types and how many children to auto-create"""
     
     
     def __init__(self, name, attr_type, children = [], make_elements = True, *args, **kwargs):
@@ -115,8 +123,7 @@ class Compound(Attr):
             
             self._make_elements()
 
-
-            
+    
     def _make_elements(self):
         #define suffix for children
         xyz = ['X', 'Y', 'Z']
@@ -124,16 +131,16 @@ class Compound(Attr):
         
         suffix = xyz
         if 'usedAsColor' in self._flags or 'uac' in self._flags or \
-           self.attrType == 'spectrum' or self.attrType == 'reflectance':
+           self.attr_type == 'spectrum' or self.attr_type == 'reflectance':
             suffix = rgb
             
         #determine child type            
         type = 'double'
-        if self.attrType[0] == 'f':
+        if self.attr_type[0] == 'f':
             type = 'float'
-        elif self.attrType[0] == 'l':
+        elif self.attr_type[0] == 'l':
             type = 'long'
-        elif self.attrType[0] == 's':
+        elif self.attr_type[0] == 's':
             type = 'short'
             
         #add children to compound
@@ -143,7 +150,7 @@ class Compound(Attr):
         
         
     def count(self):
-        """How many children does this attribute has?"""
+        """How many children does this attribute have?"""
         return len(self._children)
     
     
@@ -176,11 +183,22 @@ class Compound(Attr):
             valid_size = self.count() == self._target_size
             
         if not valid_size:
-            pm.error('UserData Module: {0} does not have the required number of children'.format(self.attrType))
+            pm.error('UserData Module: {0} does not have the required number of children'.format(self.attr_type))
 
+
+
+def create_attr(name, attr_type):
+    """a convience func returns an Attr() or Compound() based on the attr_type"""
+    if attr_type in Compound.compound_types:
+        return Compound(name, attr_type)
+    else:
+        return Attr(name, attr_type)
+    
 
 
 class Record(object):
+    """The class name of any data added to the Maya node and its version info"""
+    
     def __init__(self, attr):
         self._attr = attr
         self._name, str_version = attr.get().split(':')
@@ -189,44 +207,72 @@ class Record(object):
 
     @property
     def name(self):
+        """The name of the BaseData Sub-class"""
         return self._name
 
         
     @property
     def version(self):
+        """What version of the sub-class is this record"""
         return self._version
     
     
     @version.setter
     def version(self, value):
+        """Updates the version information for this record"""
         self.attr.unlock()
         self._version = value
-        name = '{0}:{1}'.format( self.name, self.get_version_string() )
+        name = '{0}:{1}'.format( self.name, self._get_version_string() )
         self.attr.set( name )
         self.attr.lock()  
         
         
     @property
     def attr(self):
+        """Returns the Maya attribute that represents this record"""
         return self._attr
     
     
-    def get_version_string(self):
+    def _get_version_string(self):
         return '.'.join(map(str, self._version))
     
     
     
 class BaseData(object):
-    attributes       = []
-    data_types = set(['string', 'stringArray', 'matrix', 'fltMatrix', 'reflectanceRGB', 'spectrumRGB',
-                     'float2', 'float3', 'double2', 'double3', 'long2', 'long3', 'short2', 'short3'                     
-                    'doubleArray', 'floatArray', 'Int32Array', 'vectorArray', 'nurbsCurve', 'nurbsSurface',
-                    'mesh', 'lattice', 'pointArray'])
+    """Represents data that the user wants to store as Maya attributes
+    
+    Users should inherit from this class and at a minimum override
+    get_atttributes(). get_attributes should either be declared as
+    @classmethod or @staticmethod
+    
+    The python class names will become a compound attribute of the same name.
+    Users can override cls.get_default_flags() to determine how this class
+    looks as an attribute in Maya or pass the flags in on init().
+    
+    The BaseData class is responsible for reading and writing Maya attributes,
+    creating and editing records, as well as managing class versioning.
+    
+    Any object that has a block of BaseData attributes stored on it will also
+    contain a data block name that matches user_data._RECORDS_NAME. Records
+    are used for determing what BaseData sub-classes are being stored on a
+    given node. If a record for a given class is missing from the records
+    then the user_data module won't know that the data exists.
+    """
+    
+    attributes = []
+    """The attributes returned from get_atttributes()
+    
+    these attributes are stored at the class level so the data can be
+    inspected and read without needing to create an instance of the class
+    additionally, per instance variants doesn't make sense in the scheme
+    of how data is stored    
+    """
+    
     _version = (0, 0, 0)
+    """The current vesion of this class"""
 
-    def __init__(self, version = (0, 0, 0), *args, **kwargs):  
+    def __init__(self, *args, **kwargs):  
         super(BaseData,self).__init__(*args, **kwargs)
-        self.version = version
         
         flags = self.get_default_flags()
         flags.update( kwargs )
@@ -240,7 +286,6 @@ class BaseData(object):
 
 
 ###----Versioning Methods----
-
 
     @classmethod
     def get_class_version(cls):
@@ -269,7 +314,6 @@ class BaseData(object):
         
 ###---Flag Methods----
         
-        
     @staticmethod
     def _clear_invalid_flags(flags):
         invalid = [ 'longName', 'ln', 'attribute', 'at', 'dataType', 'dt', 'p', 'parent', 'numberOfchildren', 'nc']
@@ -278,7 +322,6 @@ class BaseData(object):
                 flags.pop(key)    
 
         
-        
     @classmethod
     def get_default_flags(cls):
         return {}
@@ -286,7 +329,6 @@ class BaseData(object):
         
 ###----Record Methods-----
 
-        
     def _add_data_to_records(self):
         if self._records:
 
@@ -310,23 +352,13 @@ class BaseData(object):
             self._records[idx].set( name )
             self._records[idx].lock()
             
-            #self._records[idx].dataName.set( self.GetDataName() )
-            #self._records[idx].version.set( self.Version )
-            #self._records[idx].lock()
-            
                   
-            
     @staticmethod
     def _create_records(node):
         global _RECORDS_NAME
         pm.addAttr(node, ln = _RECORDS_NAME,  dt = 'string', m= True)
-          
-        #pm.addAttr(node, ln = _RECORDS_NAME, at = 'compound', nc = 1)  
-        #pm.addAttr(node, ln = 'records',   at = 'compound', nc = 2, m= True, parent = _RECORDS_NAME)
-        #pm.addAttr(node, ln = 'dataName',  dt = 'string', parent = 'records')
-        #pm.addAttr(node, ln = 'version',   at = 'long',   parent = 'records')        
-                        
-           
+                          
+       
     @classmethod     
     def _get_records(cls, node, force_add ):
         if not node:
@@ -343,13 +375,11 @@ class BaseData(object):
         else:
             return None
         
-        
  
     @classmethod
     def get_records(cls, node):
         return cls._get_records(node, False)
  
-        
 
     @classmethod
     def _get_record_by_name(cls, node, data_name):
@@ -369,19 +399,15 @@ class BaseData(object):
         return found_record           
 
     
-    
     @classmethod
     def get_record_by_name(cls, node, data_name):
         return cls._get_record_by_name( node, data_name )
     
     
-    
     @classmethod
     def get_record(cls, node):
         return cls._get_record_by_name( node, cls.get_data_name() )
-              
-              
-              
+                  
 ###----Attribute Methods----
  
     def _find_attr_conflicts(self):
@@ -414,14 +440,14 @@ class BaseData(object):
            
         if isinstance(attr, Compound):
             attr.validate()
-            pm.addAttr(self._node, ln = attr.name, at = attr.attrType, nc = attr.count(), **attr._flags)
+            pm.addAttr(self._node, ln = attr.name, at = attr.attr_type, nc = attr.count(), **attr._flags)
             for child in attr.get_children():
                 self.add_attr(child, attr.name)
             
-        elif attr.attrType in self.__class__.data_types:
-            pm.addAttr(self._node, ln = attr.name, dt = attr.attrType, **attr._flags)             
+        elif attr.attr_type in Attr.data_types:
+            pm.addAttr(self._node, ln = attr.name, dt = attr.attr_type, **attr._flags)             
         else:   
-            pm.addAttr(self._node, ln = attr.name, at = attr.attrType, **attr._flags)     
+            pm.addAttr(self._node, ln = attr.name, at = attr.attr_type, **attr._flags)     
            
            
     @classmethod                   
@@ -449,13 +475,13 @@ class BaseData(object):
     @classmethod
     def _init_class_attributes(cls):
         if not cls.attributes:
-            cls.attributes = cls._get_attributes()
+            cls.attributes = cls.get_attributes()
         
         
         
     @classmethod
-    def _get_attributes(cls):
-        pm.error( 'UserData Module: You\'re attempting to get attributes for class {0} that has no GetAttributes() overridden'.format(cls.__name__) )       
+    def get_attributes(cls):
+        pm.error( 'UserData Module: You\'re attempting to get attributes for class {0} that has no get_attributes() overridden'.format(cls.__name__) )       
        
        
        
@@ -514,7 +540,6 @@ class BaseData(object):
         """
         return cls.__name__
             
-            
     
     def _create_data(self):     
         attrs = self.__class__.attributes
@@ -567,7 +592,6 @@ class BaseData(object):
 
             
             data = self._node.attr(data_name)
-                    
                     
         #else, add the data to the node           
         elif force_add:
@@ -643,7 +667,7 @@ class Utils(object):
         for subclass in Utils.get_classes():
             default_flags = subclass.GetDefaultFlags()
             
-            #if the Class is going to be added with a mutli flag, then there
+            #if the Class is going to be added with a mutli flag, then
             #there shouldn't be any conflicts with its attributes
             if 'm' in default_flags or 'multi' in default_flags:
                 continue
