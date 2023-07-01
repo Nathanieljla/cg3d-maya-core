@@ -29,17 +29,42 @@ import pymel.core as pm
 #name for the life of all scripts and tools that leverage the user_data module.
 #And remember to change whenever getting an updated version of the module.
 _RECORDS_NAME      = 'DataRecords'
-_DEFAULT_NODE_TYPE = 'network'
+"""The name of the custom attr that tracks what data is on a node"""
 
-AUTO_UPDATE = True
+_DEFAULT_NODE_TYPE = 'network'
+"""The nodeType that will be created when creating a node for data storing"""
+
+
+AUTO_UPDATE = False
+"""Should versioning attempt to auto update.
+
+Some studios may want outdated data to automatically update. Setting this to
+True will mean outdated data will attempt to update when it's discovered.
+User's can decide this on a per-class instance by overriding
+pre_update_version().
+"""
 
 
 class VersionUpdateException(Exception):
+    """Thrown when BaseData.update_version() errors"""
     pass
 
 
 class Attr(object):
+    """A Wrapper for Maya's attribute arguements"""
+    
     def __init__(self, name, attr_type, *args, **kwargs):
+        """The init func can take any arguments used in maya.cmds.addAttr()
+                
+        Users don't need to include the following flags:
+        
+        -longName : this is instead derived from the Attr.name.
+        -attributeType : this is instead derived from Attr.attr_type.
+        -dataType : this is determined by the class being Attr() or Compound()
+        -parent : Determined by the Compound class parent-child structure
+        -numberOfChildren : Determined by the Compound class parent-child structure
+        """
+        
         self.name = name
         self.attrType = attr_type
         self.args = args
@@ -49,7 +74,7 @@ class Attr(object):
 
 
     def _clear_invalid_flags(self, flags):
-        invalid = [ 'longName', 'ln', 'attribute', 'at', 'dataType', 'dt', 'p', 'parent', 'numberOfchildren', 'nc']
+        invalid = [ 'longName', 'ln', 'attributeType', 'at', 'dataType', 'dt', 'p', 'parent', 'numberOfchildren', 'nc']
         for key in invalid:
             if key in flags:
                 flags.pop(key)
@@ -58,6 +83,13 @@ class Attr(object):
         
         
 class Compound(Attr):
+    """A sub-class of Attr, which can contain children attributes
+    
+    For any attributeType other than 'compound', users don't need to create
+    the children attributes. For example: Compound("space", 'float3') will
+    automatically create spaceX, spaceY, spaceZ
+    """
+    
     compound_types = {'compound':0,
                      'reflectance':3, 'spectrum':3,
                      'float2':2, 'float3':3,
@@ -65,6 +97,8 @@ class Compound(Attr):
                      'long2':2, 'long3':3,
                      'short2':2, 'short3':3
                     }
+    """A Dict of valid compound attr types and how many children to create"""
+    
     
     def __init__(self, name, attr_type, children = [], make_elements = True, *args, **kwargs):
         super(Compound, self).__init__(name, attr_type, *args, **kwargs)
@@ -109,10 +143,13 @@ class Compound(Attr):
         
         
     def count(self):
+        """How many children does this attribute has?"""
         return len(self._children)
     
     
     def add_child(self, child):
+        """Add an attribute to this Compound as a child"""
+        
         if self._target_size and len(self._children) > self._target_size:
             pm.error('UserData Module: Compound instance has reach max allowed children')
             
@@ -120,10 +157,18 @@ class Compound(Attr):
         
         
     def get_children(self):
+        """Return the internal list of children"""
         return self._children
         
         
     def validate(self):
+        """Validate that the required number of children exist
+        
+        This only makes sense when the compound instance is one of the
+        Compound.compound_types other than 'compound' and is called
+        before attempting call addAttr()
+        """
+        
         valid_size = False
         if not self._target_size:
             valid_size = len(self._children) > 0
