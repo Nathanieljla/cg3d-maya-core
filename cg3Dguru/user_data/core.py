@@ -5,8 +5,8 @@ level functions such as addAttr() has a few drawbacks that this higher-level
 module attempts to overcome. These noteable improvements include:
 
 1. user_data handles all the back-end work of reading and writing
-user_data.Base class attributes to Maya attributes. Programmers and
-Tech-artists can simply search for their Python instances inside of a Maya
+user_data.BaseData class attributes to Maya attributes. Programmers and
+Tech-artists can simply search for their Python classes inside of a Maya
 scene or on a given node and work with the results.
 
 2. Attributes in the attributes editor are organized under a compound
@@ -14,7 +14,12 @@ attribute, making it easy for end-users to understand how blocks of
 attributes related to one another.
 
 3. Built-in versioning support. Outdated attributes can easily be
-identified and updated to match their Python equivalent as code evolves. 
+identified and updated to match their Python equivalent as code evolves.
+
+4. Less attribute flags and more automation. A number of addAttr() flags can
+be determined automatically so you don't need to worry about things like -at
+and -dt, parent or child count, or even making attributes for compounds where
+the child size is predetermined.
 """
 
 __author__ = "Nathaniel Albright"
@@ -24,13 +29,13 @@ __version__ = 0.9.0
 import pymel.core as pm
 
 #Don't change _RECORDS_NAME unless your project really desires an alternative
-#name for the life of all scripts and tools that leverage the user_data module.
-#And remember to change whenever getting an updated version of the module.
+#name for the life of all scripts and tools that leverage the user_data module
+#(and remember to change whenever getting an updated version of the module).
 _RECORDS_NAME      = 'DataRecords'
 """The name of the custom attr that tracks what data is on a node"""
 
 _DEFAULT_NODE_TYPE = 'network'
-"""The nodeType that will be created when creating a node for data storing"""
+"""The nodeType that will be created when creating a node for storing data"""
 
 AUTO_UPDATE = False
 """Should versioning attempt to auto update when there's a version mismatch?
@@ -38,9 +43,8 @@ AUTO_UPDATE = False
 Some studios may want outdated class data to automatically update. Setting
 this to True will mean outdated data will attempt to update when it's
 discovered. User's can decide this on a per-class instance by overriding
-pre_update_version().
+BaseData.pre_update_version().
 """
-
 
 class VersionUpdateException(Exception):
     """Thrown when BaseData.update_version() errors"""
@@ -88,14 +92,12 @@ class Attr(object):
         self._flags   = flags
         
 
-
     @staticmethod
     def _clear_invalid_flags(flags):
         invalid = [ 'longName', 'ln', 'attributeType', 'at', 'dataType', 'dt', 'p', 'parent', 'numberOfchildren', 'nc']
         for key in invalid:
             if key in flags:
                 flags.pop(key)
-                
                 
                 
     @classmethod
@@ -111,7 +113,7 @@ class Attr(object):
         
         
 class Compound(Attr):
-    """An attribute class that contain children attributes.
+    """An attribute class that contains children attributes.
     
     For any -attributeType other than 'compound', users don't need to create
     the children attributes. For example: Compound("space", 'float3') will
@@ -294,11 +296,6 @@ class BaseData(Attr):
     def __init__(self, *args, **kwargs):  
         super(BaseData,self).__init__(self.get_name(), 'compound', *args, **kwargs)
         
-        #flags = self.get_default_flags()
-        #flags.update( kwargs )
-        #self._clear_invalid_flags( flags )
-        
-        #self._flags   = flags
         self._records = None
         self._node    = None
         
@@ -330,22 +327,6 @@ class BaseData(Attr):
     @version.setter
     def version(self, value):
         self.set_class_version(value)
-        
-        
-        
-####---Flag Methods----
-        
-    #@staticmethod
-    #def _clear_invalid_flags(flags):
-        #invalid = [ 'longName', 'ln', 'attribute', 'at', 'dataType', 'dt', 'p', 'parent', 'numberOfchildren', 'nc']
-        #for key in invalid:
-            #if key in flags:
-                #flags.pop(key)    
-
-        
-    #@classmethod
-    #def get_default_flags(cls):
-        #return {}
         
         
 ###----Record Methods-----
@@ -443,6 +424,7 @@ class BaseData(Attr):
         Returns the record if it exists, else None         
         """
         return cls._get_record_by_name( node, cls.get_name() )
+    
                   
 ###----Attribute Methods----
  
@@ -512,7 +494,6 @@ class BaseData(Attr):
             cls.attributes = cls.get_attributes()
         
         
-        
     @classmethod
     def get_attributes(cls):
         """MUST IMPLEMENT : A list of user_data.Attrs stored in this class.
@@ -522,7 +503,6 @@ class BaseData(Attr):
         must also be declared as a class or static method.        
         """
         pm.error( 'UserData Module: You\'re attempting to get attributes for class {0} that has no get_attributes() overridden'.format(cls.__name__) )       
-       
        
        
 ###----Update Methods----
@@ -596,7 +576,6 @@ class BaseData(Attr):
         return True
 
         
-     
     def post_update_version(self, data, update_successful):
         """Called after update_version()
         
@@ -637,7 +616,6 @@ class BaseData(Attr):
         return self._node.attr(long_name)
         
         
-           
     def post_create(self, data):
         """Called after the data has been created.
         
@@ -650,7 +628,6 @@ class BaseData(Attr):
         
         """        
         pass
-              
               
     
     def get_data(self, node, force_add = False):
@@ -763,10 +740,7 @@ class BaseData(Attr):
             
         return (pynode, data)   
     
-    
-    
-    
-    
+
     
 class Utils(object):
     """Easy module and maya scene inspection
