@@ -33,11 +33,11 @@ _DEFAULT_NODE_TYPE = 'network'
 """The nodeType that will be created when creating a node for data storing"""
 
 AUTO_UPDATE = False
-"""Should versioning attempt to auto update.
+"""Should versioning attempt to auto update when there's a version mismatch?
 
-Some studios may want outdated data to automatically update. Setting this to
-True will mean outdated data will attempt to update when it's discovered.
-User's can decide this on a per-class instance by overriding
+Some studios may want outdated class data to automatically update. Setting
+this to True will mean outdated data will attempt to update when it's
+discovered. User's can decide this on a per-class instance by overriding
 pre_update_version().
 """
 
@@ -74,26 +74,46 @@ class Attr(object):
         -parent or -p: Determined by the Compound class parent-child structure
         -numberOfChildren or -nc : Determined by the Compound class parent-child structure
         """
+        super(Attr, self).__init__(*args, **kwargs)
         
         self.name = name
         self.attr_type = attr_type
         self.args = args
-        self._flags = kwargs
-        self._clear_invalid_flags(self._flags)
+        
+        #combine any input flags with class defined flags
+        flags = self.get_default_flags()
+        flags.update( kwargs )
+        self._clear_invalid_flags( flags )
+        
+        self._flags   = flags
+        
 
 
-    def _clear_invalid_flags(self, flags):
+    @staticmethod
+    def _clear_invalid_flags(flags):
         invalid = [ 'longName', 'ln', 'attributeType', 'at', 'dataType', 'dt', 'p', 'parent', 'numberOfchildren', 'nc']
         for key in invalid:
             if key in flags:
                 flags.pop(key)
+                
+                
+                
+    @classmethod
+    def get_default_flags(cls):
+        """Defines class level flag arguments
+        
+        Sub-classes of Attr can override this function and return any
+        flags used in maya.cmds.addAttr() so the class has a consistant
+        look in Maya.        
+        """
+        return {}    
         
         
         
 class Compound(Attr):
     """An attribute class that contain children attributes.
     
-    For any attributeType other than 'compound', users don't need to create
+    For any -attributeType other than 'compound', users don't need to create
     the children attributes. For example: Compound("space", 'float3') will
     automatically create spaceX, spaceY, spaceZ
     """
@@ -158,7 +178,7 @@ class Compound(Attr):
         """Add an attribute to this Compound as a child"""
         
         if self._target_size and len(self._children) > self._target_size:
-            pm.error('UserData Module: Compound instance has reach max allowed children')
+            pm.error('UserData Module: Compound instance has reached the max allowed children')
             
         self._children.append(child)
         
@@ -169,11 +189,11 @@ class Compound(Attr):
         
         
     def validate(self):
-        """Validate that the required number of children exist
+        """Confirm that the required number of children exist
         
-        This only makes sense when the compound instance is one of the
-        Compound.compound_types other than 'compound' and is called
-        before attempting call addAttr()
+        If the attr_type is 'compound' then one or more children must exist
+        for this to be true. For all other attr_types the size of children
+        must match the required count defined in Compound.compound_types
         """
         
         valid_size = False
@@ -187,17 +207,17 @@ class Compound(Attr):
 
 
 
-def create_attr(name, attr_type):
-    """a convience func returns an Attr() or Compound() based on the attr_type"""
+def create_attr(name, attr_type, *args, **kwargs):
+    """A convience func returns an Attr() or Compound() based on the attr_type"""
     if attr_type in Compound.compound_types:
-        return Compound(name, attr_type)
+        return Compound(name, attr_type, *args, **kwargs)
     else:
-        return Attr(name, attr_type)
+        return Attr(name, attr_type, *args, **kwargs)
     
 
 
 class Record(object):
-    """The class name of any data added to the Maya node and its version info"""
+    """The name of the class data found on a Maya node and its version info"""
     
     def __init__(self, attr):
         self._attr = attr
@@ -207,13 +227,13 @@ class Record(object):
 
     @property
     def name(self):
-        """The name of the BaseData Sub-class"""
+        """The name of the class"""
         return self._name
 
         
     @property
     def version(self):
-        """What version of the sub-class is this record"""
+        """What version of the class is this record"""
         return self._version
     
     
@@ -238,7 +258,7 @@ class Record(object):
     
     
     
-class BaseData(object):
+class BaseData(Attr):
     """Represents data that the user wants to store as Maya attributes
     
     Users should inherit from this class and at a minimum override
@@ -250,7 +270,7 @@ class BaseData(object):
     looks as an attribute in Maya or pass the flags in on init().
     
     The BaseData class is responsible for reading and writing Maya attributes,
-    creating and editing records, as well as managing class versioning.
+    creating and editing records, as well as class.version management.
     
     Any object that has a block of BaseData attributes stored on it will also
     contain a data block name that matches user_data._RECORDS_NAME. Records
@@ -262,23 +282,23 @@ class BaseData(object):
     attributes = []
     """The attributes returned from get_atttributes()
     
-    these attributes are stored at the class level so the data can be
-    inspected and read without needing to create an instance of the class
-    additionally, per instance variants doesn't make sense in the scheme
-    of how data is stored    
+    These attributes are stored at the class level so the data can be
+    inspected and read without needing to create an instance of the class.
+    Additionally, per instance attrs doesn't make sense in the scheme
+    of how data is stored and used by this module.
     """
     
     _version = (0, 0, 0)
     """The current vesion of this class"""
 
     def __init__(self, *args, **kwargs):  
-        super(BaseData,self).__init__(*args, **kwargs)
+        super(BaseData,self).__init__(self.get_name(), 'compound', *args, **kwargs)
         
-        flags = self.get_default_flags()
-        flags.update( kwargs )
-        self._clear_invalid_flags( flags )
+        #flags = self.get_default_flags()
+        #flags.update( kwargs )
+        #self._clear_invalid_flags( flags )
         
-        self._flags   = flags
+        #self._flags   = flags
         self._records = None
         self._node    = None
         
@@ -296,6 +316,7 @@ class BaseData(object):
     def set_class_version(cls, version):
         cls._version = version
         
+        
     @classmethod
     def get_version_string(cls):
         return '.'.join(map(str, cls.version))
@@ -312,19 +333,19 @@ class BaseData(object):
         
         
         
-###---Flag Methods----
+####---Flag Methods----
         
-    @staticmethod
-    def _clear_invalid_flags(flags):
-        invalid = [ 'longName', 'ln', 'attribute', 'at', 'dataType', 'dt', 'p', 'parent', 'numberOfchildren', 'nc']
-        for key in invalid:
-            if key in flags:
-                flags.pop(key)    
+    #@staticmethod
+    #def _clear_invalid_flags(flags):
+        #invalid = [ 'longName', 'ln', 'attribute', 'at', 'dataType', 'dt', 'p', 'parent', 'numberOfchildren', 'nc']
+        #for key in invalid:
+            #if key in flags:
+                #flags.pop(key)    
 
         
-    @classmethod
-    def get_default_flags(cls):
-        return {}
+    #@classmethod
+    #def get_default_flags(cls):
+        #return {}
         
         
 ###----Record Methods-----
@@ -345,10 +366,10 @@ class BaseData(object):
                 if idx == -1:
                     idx = indices[-1] + 1
             
-            #concatenating the name and version is not as clean in code
-            #(vs seperate attributes), but it makes end-user view from
-            #the attribute editor clean while not taking up much UI space
-            name = '{0}:{1}'.format( self.get_data_name(), self.get_version_string() )
+            #concatenating the name and version is not as clean in code (vs
+            #seperate attributes), but it makes end-user view from the
+            #attribute editor clean while not taking up as much UI space
+            name = '{0}:{1}'.format( self.get_name(), self.get_version_string() )
             self._records[idx].set( name )
             self._records[idx].lock()
             
@@ -378,6 +399,13 @@ class BaseData(object):
  
     @classmethod
     def get_records(cls, node):
+        """Sees if any records exists on the input node
+        
+        The records attributes will contain all list of all
+        the records stored on the node.
+        
+        Returns the records attribute if found else None.
+        """
         return cls._get_records(node, False)
  
 
@@ -401,12 +429,20 @@ class BaseData(object):
     
     @classmethod
     def get_record_by_name(cls, node, data_name):
+        """Sees if a record by the input data_name exists on the input node
+        
+        Returns the record if it exists, else None        
+        """
         return cls._get_record_by_name( node, data_name )
     
     
     @classmethod
     def get_record(cls, node):
-        return cls._get_record_by_name( node, cls.get_data_name() )
+        """see if a record matching the get_name() on the input node
+        
+        Returns the record if it exists, else None         
+        """
+        return cls._get_record_by_name( node, cls.get_name() )
                   
 ###----Attribute Methods----
  
@@ -416,7 +452,7 @@ class BaseData(object):
             #I *believe* attributes that are part of a multi arg won't conflict.            
             attr_names = []       
         
-        attr_names.append( self.get_data_name() )
+        attr_names.append( self.get_name() )
         
         conflicts = []
         for attr_name in attr_names:
@@ -434,7 +470,7 @@ class BaseData(object):
             pm.error( errorMessage.format(conflicts, class_name, record_names) )
  
                
-    def add_attr(self, attr, parent_name):
+    def _add_attr(self, attr, parent_name):
         if parent_name:
             attr._flags['parent'] = parent_name
            
@@ -442,7 +478,7 @@ class BaseData(object):
             attr.validate()
             pm.addAttr(self._node, ln = attr.name, at = attr.attr_type, nc = attr.count(), **attr._flags)
             for child in attr.get_children():
-                self.add_attr(child, attr.name)
+                self._add_attr(child, attr.name)
             
         elif attr.attr_type in Attr.data_types:
             pm.addAttr(self._node, ln = attr.name, dt = attr.attr_type, **attr._flags)             
@@ -460,9 +496,7 @@ class BaseData(object):
             
     @classmethod        
     def get_attribute_names(cls):
-        """
-        returns a flat list of all the attribute names of the class.attributes.
-        """
+        """returns a flat list of all the attribute names in class.attributes"""
         name_list = []
         cls._init_class_attributes()
             
@@ -481,6 +515,12 @@ class BaseData(object):
         
     @classmethod
     def get_attributes(cls):
+        """MUST IMPLEMENT : A list of user_data.Attrs stored in this class.
+        
+        Sub-classes of BaseData must override this function and return
+        the attributes they want to create and store in Maya. The function
+        must also be declared as a class or static method.        
+        """
         pm.error( 'UserData Module: You\'re attempting to get attributes for class {0} that has no get_attributes() overridden'.format(cls.__name__) )       
        
        
@@ -488,14 +528,47 @@ class BaseData(object):
 ###----Update Methods----
 
     def pre_update_version(self, old_data, old_version_number):
-        """
-        Overwrite : 
+        """Determines if the update_version() should be called.
+        
+        Users can override this function if they wish to define their own
+        logic. By default the function returns user_data.AUTO_UPDATE, which
+        is False by default.
+        
+        Args:
+            old_data (pymel.general.Attr) : The data that's about to be updated.
+            old_version_number (Tuple) : The version information of the old_data.
+        
+        Returns:
+            Bool: True if udpate_version() should be called, else False.
         """
         global AUTO_UPDATE
         return AUTO_UPDATE
      
       
     def update_version(self, old_data, old_version_number):
+        """Updates the data to the latest version of the Python defintion.
+        
+        The default implimentation of this happens in five steps.
+        1. A temporary node is created with the latest class data
+        2. The current data values are copied to the temp node using pymel.core.copyAttr
+        3. The current data is deleted off the original node
+        4. The new data is added to the original node.
+        5. The data values are transferred back from the temp node to the original node.
+        
+        Failure of this process could occur during step #2. In this situation
+        user_data.VersionUpdateException is raised and the user will need to
+        determine their own logic for how to update/replace their existing
+        data with the new class version.
+        
+        Args:
+            old_data (pymel.general.Attr) : the data of the outdated version.
+            old_version_number (tuple) : The Max, min, patch value of the old data.
+        
+        Returns:
+            Bool : True if the update was successful else False.
+        """
+        
+        
         #Copy the attribute values to a temporary node
         temp_node, data = self.create_node(name = 'TRASH', ss=True)
         name_list = self.get_attribute_names()
@@ -505,11 +578,11 @@ class BaseData(object):
             #delete the tempNode
             pm.delete(temp_node)
             
-            message = 'Please impliment custom update logic for class: {0}  oldVersion: {1}  newVersion: {2}'.format( self.get_data_name(), old_version_number, self.version)
+            message = 'Please impliment custom update logic for class: {0}  oldVersion: {1}  newVersion: {2}'.format( self.get_name(), old_version_number, self.version)
             raise VersionUpdateException(message)
         
         #delete the attributes off the current node
-        pm.deleteAttr( self._node, at = self.get_data_name() )
+        pm.deleteAttr( self._node, at = self.get_name() )
         
         #rebuild with the latest definition
         self._create_data()
@@ -525,8 +598,16 @@ class BaseData(object):
         
      
     def post_update_version(self, data, update_successful):
-        """
-        Overwrite : 
+        """Called after update_version()
+        
+        The default implimentation does nothing. Users can override
+        this function if they want to do any post processing after
+        the update_function has been run.
+        
+        args:
+            data (pymel.general.Attr) : The newly updated data if successful
+            else the old data.
+            update_successful (bool) : Was the update successful.
         """        
         pass
     
@@ -534,34 +615,54 @@ class BaseData(object):
 ###----Data Methods----
     
     @classmethod
-    def get_data_name(cls):
-        """
-        Overwrite : 
+    def get_name(cls):
+        """The name of the class as it will appear in Maya's extra attributes
+        
+        By default the name is the same as the class.__name__ This should be
+        determined upfront before using the name in production.  Once changed
+        any existing records and associated data will be orphaned.  If users
+        opt to override this, they must include a @classmethod declarator
         """
         return cls.__name__
             
     
     def _create_data(self):     
         attrs = self.__class__.attributes
-        long_name = self.get_data_name()
+        long_name = self.get_name()
         pm.addAttr(self._node, ln = long_name, at = 'compound', nc = len( attrs ), **self._flags )
 
         for attr in attrs:
-            self.add_attr(attr, long_name)       
+            self._add_attr(attr, long_name)       
          
         return self._node.attr(long_name)
         
         
            
     def post_create(self, data):
-        """
-        Overwrite : 
+        """Called after the data has been created.
+        
+        This function doesn't do anything by default and exists purely
+        for end-user convenience.  What a great place for adding your new
+        data to an existing node network!
+        
+        Args:
+            data (pymel.general.Attr) : The newly created data. 
+        
         """        
         pass
               
               
     
     def get_data(self, node, force_add = False):
+        """Attempts to return the class data stored on the input node.
+        
+        Args:
+            node (pyNode) : The node you want to get/store data on
+            force_add (bool) : Should the data be added if none exists?
+            
+        Returns:
+            pymel.general.Attr : The data stored on the node or None.        
+        """
         #should be cleared, but let's be sure.
         self._records = None
         self._node    = node
@@ -574,8 +675,8 @@ class BaseData(object):
             
         #If found make sure the data block doesn't need updating.
         if record:
-            data_name = self.get_data_name() 
-            record_version = record.version #.get()
+            data_name = self.get_name() 
+            record_version = record.version
             current_version = self.version
             
             #Attempt to updat the version
@@ -607,25 +708,53 @@ class BaseData(object):
         self._node    = None
         return data      
     
-    
         
     def add_data(self, node):
+        """Add class attributes to the input node.
+        
+        If the input node already has data on it then versioning is run to
+        ensure the data format is up-to-date.
+        
+        Args:
+            node (pyNode) : The node to add the data to.
+                
+        Returns:
+            pymel.general.Attr : The data added to the node.
+        """
         return self.get_data(node, force_add=True)
 
 
-    def delete_data(self, node):   
+    def delete_data(self, node):
+        """Remove the class attributes off of the input node
+
+        Args:
+            node (pyNode) : The node to remove the data from.        
+        """
         record = self.get_record(node)
         
         if record:
             record.attr.unlock()
             pm.removeMultiInstance(record.attr, b=True)
-            pm.deleteAttr(node, at = self.get_data_name() )   
+            pm.deleteAttr(node, at = self.get_name() )   
             
 
 ###----Misc Methods----
     
     @classmethod
     def create_node(cls, nodeType = _DEFAULT_NODE_TYPE, *args, **kwargs):
+        """Creates a new node in Maya that also contains the Class attributes.
+        
+        The default node type that's created is driven by
+        user_data._DEFAULT_NODE_TYPE, but users can override this based on
+        the input params.
+        
+        Args:
+            nodeType (str, optional) : The name of the maya node to create.
+            
+        Returns:
+            Tuple : The newly created pyNode as element zero and the data as
+            element 1.
+        """
         pynode = pm.general.createNode(nodeType, **kwargs)
     
         if pynode:
@@ -640,28 +769,57 @@ class BaseData(object):
     
     
 class Utils(object):
+    """Easy module and maya scene inspection
+    
+    The user_data.Utils class provides a number of functions
+    to inspect not only the active Maya scene, but also an inspection
+    of Python classes that derive from user_data.BaseData. Users
+    can verify that there won't be any attribute naming conflicts between
+    the various class defintions, search for data that's being used
+    in the active scene, as well as verify verioning.    
+    """
     def __init__(self, *args, **kwargs):
         super(Utils, self).__init__(*args, **kwargs)
     
     
     @staticmethod
     def get_classes():
+        """Returns all BaseData subclass"""
         classes = BaseData.__subclasses__()
         return classes
     
     
     @staticmethod
     def get_class_names():
+        """Returns a list of all BaseData subclass names."""
         sub_classes = Utils.get_classes()
         class_names = {}
         for subclass in sub_classes:
-            class_names[ subclass.get_data_name() ] = subclass
+            class_names[ subclass.get_name() ] = subclass
             
         return class_names
 
     
     @staticmethod
     def find_attribute_conflicts(error_on_conflict = True):
+        """Find any attribute naming conflicts between the BasData subclasses.
+        
+        Since the BaseData.attributes are written to Maya as basic attributes
+        it's possible to have a naming conflict between to classes. For
+        example myclass.startFrame and exportData.startFrame. Users can call
+        this function after adding any new class definition to ensure there
+        aren't any naming conflicts. In reality, if two classes do have a
+        naming conflict but the production pipeline means those two blocks of
+        data would never be stored on the same object, then the conflict
+        should be a non-issue. this function will print any found conflicts
+        in the output window and optionally raise an error if a conflict has
+        been found.
+        
+        Args:
+            error_on_conflict (bool) : Should an error be raised if a
+            conflict is found?
+        """
+        
         conflicts = {}
         attrs = {}
         for subclass in Utils.get_classes():
@@ -697,14 +855,32 @@ class Utils(object):
     
     
     @staticmethod
-    def get_nodes_with_data(data_class = None, *args, **kwargs):
-        nodes = pm.ls(*args, **kwargs)
-        nodes.sort()
+    def get_nodes_with_data(nodes = None, data_class = None, *args, **kwargs):
+        """Return a list of nodes that have any (or specific) data attached
+        
+        Users can pass in a list of nodes to examine or if no nodes are
+        provided they can pass in the standard pymel.core.ls args to generate
+        a list of node to inspect.
+        
+        Args:
+            nodes (pyNode list, optional) : What nodes should the function
+            search?
+            data_class (BaseData sub-class, optional) : What class data
+            are we looking for. If this is None then a node will be
+            returned if it has any data attached to it.
+            **kwargs (pymel.ls flags) : Only considered if node is None.
+            
+        Returns:
+            list : A list of pyNodes that match the given search criteria. 
+        """
+        if not nodes:
+            nodes = pm.ls(*args, **kwargs)
+            nodes.sort()
         
         data_nodes = []
         for node in nodes:
             if data_class:
-                records = BaseData.get_record_by_name( node, data_class.get_data_name() )
+                records = BaseData.get_record_by_name( node, data_class.get_name() )
             else:
                 records = BaseData.get_records(node)
                 
@@ -715,9 +891,35 @@ class Utils(object):
     
     
     @staticmethod
-    def validate_version(*args, **kwargs):
-        nodes = pm.ls(*args, **kwargs)
+    def validate_version(node = None, *args, **kwargs):
+        """Force version validation on the given node conditions
+
+        This function can be used to ensure current scene nodes have their
+        data up-to-date. Users can pass in a list of nodes to examine or if
+        no nodes are provided they can pass in the standard pymel.core.ls
+        args to generate a list of node to inspect.
         
+        Validating a scene might look something like this:
+        
+        #find all scene nodes that have any data on them
+        nodes = Utils.get_nodes_with_data()
+        
+        #Update the nodes we found in our scene.
+        Utils.validate_version(nodes = nodes)
+        
+        If you're feeling really lazy you can just examine every object in
+        the scene against every potential class like this:
+        
+        Utils.validate_version()
+            
+        Args:
+            nodes (pyNode list, optional) : What nodes should the function
+            search?
+            **kwargs (pymel.ls flags) : Only considered if nodes is None.
+        """
+        if not nodes:
+            nodes = pm.ls(*args, **kwargs)        
+                
         classes= Utils.get_classes()
         
         for data_class in classes:
