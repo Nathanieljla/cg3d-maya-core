@@ -331,8 +331,6 @@ class Matrix_Utils(object):
             return self.transform_node.getTranslation('object')
 
 
-
-    
     def _set_forward_up_right(self,
                                forward: pm.datatypes.Vector,
                                up: pm.datatypes.Vector,

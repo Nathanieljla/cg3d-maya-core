@@ -24,7 +24,7 @@ the child size is predetermined.
 
 __author__ = "Nathaniel Albright"
 __email__ = "developer@3dcg.guru"
-__version__ = 0.9.0
+__version__ = (0, 9, 0)
 
 import pymel.core as pm
 
@@ -316,7 +316,7 @@ class BaseData(Attr):
         
     @classmethod
     def get_version_string(cls):
-        return '.'.join(map(str, cls.version))
+        return '.'.join(map(str, cls._version))
 
     
     @property
@@ -452,20 +452,22 @@ class BaseData(Attr):
             pm.error( errorMessage.format(conflicts, class_name, record_names) )
  
                
-    def _add_attr(self, attr, parent_name):
+    def _add_attr(self, attr, suffix, parent_name):
+        attr_name = suffix + attr.name
+        
         if parent_name:
             attr._flags['parent'] = parent_name
            
         if isinstance(attr, Compound):
             attr.validate()
-            pm.addAttr(self._node, ln = attr.name, at = attr.attr_type, nc = attr.count(), **attr._flags)
+            pm.addAttr(self._node, ln = attr_name, at = attr.attr_type, nc = attr.count(), **attr._flags)
             for child in attr.get_children():
-                self._add_attr(child, attr.name)
+                self._add_attr(child, '', attr_name)
             
         elif attr.attr_type in Attr.data_types:
-            pm.addAttr(self._node, ln = attr.name, dt = attr.attr_type, **attr._flags)             
+            pm.addAttr(self._node, ln = attr_name, dt = attr.attr_type, **attr._flags)             
         else:   
-            pm.addAttr(self._node, ln = attr.name, at = attr.attr_type, **attr._flags)     
+            pm.addAttr(self._node, ln = attr_name, at = attr.attr_type, **attr._flags)     
            
            
     @classmethod                   
@@ -603,6 +605,23 @@ class BaseData(Attr):
         opt to override this, they must include a @classmethod declarator
         """
         return cls.__name__
+    
+    
+    @classmethod
+    def get_suffix(cls):
+        """Retuns the suffix to append to all class attributes
+        
+        The deault suffix matches the python class name. The suffix
+        is designed to limit the potential of an attribute name collision
+        between mutliple user_data blocks assigned to the same maya node.
+        Users can return '' if they don't want a suffix added to their
+        attribute names.  The suffix will automaticallly be separated by '_'
+        
+        NOTE: If you decided to change the suffix once the data is production
+        then you'll need to override update_version() with your own logic
+        as old names and new names won't match when updating the data block.        
+        """
+        return cls.__name__
             
     
     def _create_data(self):     
@@ -610,8 +629,12 @@ class BaseData(Attr):
         long_name = self.get_name()
         pm.addAttr(self._node, ln = long_name, at = 'compound', nc = len( attrs ), **self._flags )
 
+        suffix = self.get_suffix()
+        if suffix:
+            suffix += '_'
+
         for attr in attrs:
-            self._add_attr(attr, long_name)       
+            self._add_attr(attr, suffix, long_name)       
          
         return self._node.attr(long_name)
         

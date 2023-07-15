@@ -22,6 +22,9 @@ class Window(object): #QWidget):
     
     
     def __init__(self, windowKey, uiFilepath, *args, **kwargs):
+        if not os.path.exists(uiFilepath):
+            raise FileNotFoundError("Invalid path {}".format(uiFilepath))
+        
         self.add_window(windowKey, self)
         
         loader = QUiLoader()

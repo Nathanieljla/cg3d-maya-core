@@ -83,7 +83,7 @@ class MenuItem(object):
             self.order =  module.ORDER
         if hasattr(module, 'IS_RADIO_GROUP'):
             self.is_radio_group = module.IS_RADIO_GROUP
-        if hasattr(module, 'show'):
+        if hasattr(module, 'SHOW'):
             self.show = module.show()
         if hasattr(module, 'OPTIONS'):
             options_name = "{}_{}".format(self.name, 'options')

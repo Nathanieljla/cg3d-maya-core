@@ -105,7 +105,7 @@ class Fingers_Window(ui.Window):
                     
         
         
-def Run():
+def run():
     filepath = os.path.join( os.path.dirname(__file__), r'fingers.ui' )
     joint_utils_window = Fingers_Window(WINDOW_NAME, filepath)
     joint_utils_window.ui.show()
