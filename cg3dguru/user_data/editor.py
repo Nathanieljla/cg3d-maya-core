@@ -6,7 +6,7 @@ import importlib
 import pymel.core as pm
 
 import cg3dguru.ui as ui
-import cg3dguru.user_data as ud
+import cg3dguru.user_data
 
 WINDOW_NAME = 'User Data Editor'
 
@@ -19,7 +19,7 @@ class UserDataEditor(ui.Window):
         self.AddScriptJob()
         self.maya_nodes_selected = False
 
-        self.classes = ud.Utils.get_class_names()
+        self.classes = cg3dguru.user_data.Utils.get_class_names()
         keys = list(self.classes.keys())
         keys.sort()
         self.ui.createDataList.addItems(keys)
@@ -75,12 +75,12 @@ class UserDataEditor(ui.Window):
     
     def Add(self):
         names = self._GetItemNames(self.ui.createDataList)
-        ud.Utils.validate_version(sl=True)
+        cg3dguru.user_data.Utils.validate_version(sl=True)
         
         for name in names:
-            dataClass = self.classes[name]()
+            data_class = self.classes[name]()
             for mayaNode in pm.ls(sl=True):
-                dataClass.AddData( mayaNode )
+                data_class.add_data( mayaNode )
                 
         self.SelectionChanged(self.ui.createDataList)
     
@@ -92,7 +92,7 @@ class UserDataEditor(ui.Window):
         for name in names:
             dataClass = self.classes[name]()
             for mayaNode in selection:
-                dataClass.DeleteData( mayaNode )
+                dataClass.delete_data( mayaNode )
                 
         self.MayaSelectionChanged()
     
@@ -104,7 +104,7 @@ class UserDataEditor(ui.Window):
         nodes = []
         for name in names:
             dataClass = self.classes[name]()            
-            foundNodes = ud.Utils.get_nodes_with_data(data_class=dataClass, **kwargs)
+            foundNodes = cg3dguru.user_data.Utils.get_nodes_with_data(data_class=dataClass, **kwargs)
             
             nodes.extend(foundNodes)
             
@@ -130,7 +130,7 @@ class UserDataEditor(ui.Window):
             
             for name in names:
                 data = None
-                data = ud.Utils.get_nodes_with_data(data_class = self.classes[name], sl=True)
+                data = cg3dguru.user_data.Utils.get_nodes_with_data(data_class = self.classes[name], sl=True)
                 if data:
                     hasData  = True
                 
@@ -162,7 +162,7 @@ def run(data_module = None):
                 print("failed to import {}".format(data_module))
                 return
 
-    filepath = os.path.join(ud.__path__[0],  'user_data.ui' )
+    filepath = os.path.join(cg3dguru.user_data.__path__[0],  'user_data.ui' )
     editor = UserDataEditor(WINDOW_NAME, filepath)
     editor.ui.show()
     

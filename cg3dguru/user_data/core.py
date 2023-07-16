@@ -30,11 +30,11 @@ import pymel.core as pm
 
 #Don't change _RECORDS_NAME unless your project really desires an alternative
 #name for the life of all scripts and tools that leverage the user_data module
-#(and remember to change whenever getting an updated version of the module).
+#(and remember to change it whenever getting an updated version of the module).
 _RECORDS_NAME      = 'DataRecords'
 """The name of the custom attr that tracks what data is on a node"""
 
-_DEFAULT_NODE_TYPE = 'network'
+DEFAULT_NODE_TYPE = 'network'
 """The nodeType that will be created when creating a node for storing data"""
 
 AUTO_UPDATE = False
@@ -54,18 +54,26 @@ class VersionUpdateException(Exception):
 class Attr(object):
     """A Wrapper for Maya's attribute arguements"""
     
-    data_types = set(['string', 'stringArray', 'matrix', 'fltMatrix',
+        
+    attr_types = set(['bool', 'long', 'short', 'byte', 'char', 'enum',
+                      'float', 'double', 'doubleAngle', 'doubleLinear', 'message', 'time',
+                      'fltMatrix'])
+    """A list of attributeType names that use the -at flag"""    
+    
+
+    data_types = set(['string', 'stringArray', 'matrix',
                       'reflectanceRGB', 'spectrumRGB', 'float2', 'float3', 'double2',
-                      'double3', 'long2', 'long3', 'short2', 'short3' 'doubleArray',\
+                      'double3', 'long2', 'long3', 'short2', 'short3', 'doubleArray',\
                       'floatArray', 'Int32Array', 'vectorArray', 'nurbsCurve', 'nurbsSurface',\
                       'mesh', 'lattice', 'pointArray']
                      )
-    """A list of attributeType names that are of type 'data'
+    """A list of attributeType names that use the -dt flag
     
     If an attr.attr_type is found in Attr.data_types then the 'dt' flag
     is automatically added to the args when creating the Maya attribute, else
     the 'at' flag is used.
     """
+     
         
     def __init__(self, name, attr_type, *args, **kwargs):
         """The init func can take any arguments used in maya.cmds.addAttr()
@@ -78,12 +86,12 @@ class Attr(object):
         -parent or -p: Determined by the Compound class parent-child structure
         -numberOfChildren or -nc : Determined by the Compound class parent-child structure
         """
-        super(Attr, self).__init__(*args, **kwargs)
+        super(Attr, self).__init__() #*args, **kwargs)
         
         self.name = name
         self.attr_type = attr_type
         self.args = args
-        
+                
         #combine any input flags with class defined flags
         flags = self.get_default_flags()
         flags.update( kwargs )
@@ -130,18 +138,37 @@ class Compound(Attr):
     """A Dict of valid compound attr types and how many children to auto-create"""
     
     
-    def __init__(self, name, attr_type, children = [], make_elements = True, *args, **kwargs):
+    child_types = {'reflectance':'float', 'spectrum':'float',
+                   'float2':'float', 'float3':'float', 'double2':'double',
+                   'double3':'double', 'long2':'long', 'long3':'long', 'short2':'short',
+                   'short3':'short'
+                   }
+    """What is the sub-element type that makes up this compound"""
+    
+    
+    def __init__(self, name, attr_type, children = None, make_elements = True, *args, **kwargs):
+        #reflectance and spectrum don't play nice with the color picker in the attr
+        #so let's convert these to a float3 with a color flag
+        if attr_type == 'reflectance' or attr_type == 'spectrum':
+            attr_type = 'float3'
+            kwargs['uac'] = True
+                
         super(Compound, self).__init__(name, attr_type, *args, **kwargs)
         
+        #don't make children = [] in the __init__ as it's persistant data
+        #between class() calls.
+        if children is None:
+            children = []
+        
         if attr_type not in Compound.compound_types:
-            pm.error('UserData Module: {0} is not a valid CompoundType.  Print Compound.CompoundTypes for valid list'.format(attr_type))
+            pm.error('user_data Module: {0} is not a valid CompoundType.  Print Compound.CompoundTypes for valid list'.format(attr_type))
         
         self._target_size = Compound.compound_types[attr_type]
         self._children   = children
         
         if self._target_size and make_elements:
             if self._children:
-                pm.error('UserData Module: {0} can\t use _MakeElements with Compound class, if you also supply children')
+                pm.error('user_data Module: You supplied children, but also have make_elements = True.  Children will be erased')
             
             self._make_elements()
 
@@ -156,14 +183,8 @@ class Compound(Attr):
            self.attr_type == 'spectrum' or self.attr_type == 'reflectance':
             suffix = rgb
             
-        #determine child type            
-        type = 'double'
-        if self.attr_type[0] == 'f':
-            type = 'float'
-        elif self.attr_type[0] == 'l':
-            type = 'long'
-        elif self.attr_type[0] == 's':
-            type = 'short'
+        #determine child type
+        type = Compound.child_types[self.attr_type]
             
         #add children to compound
         for i in range(0, self._target_size):
@@ -180,7 +201,7 @@ class Compound(Attr):
         """Add an attribute to this Compound as a child"""
         
         if self._target_size and len(self._children) > self._target_size:
-            pm.error('UserData Module: Compound instance has reached the max allowed children')
+            pm.error('user_data Module: Compound instance has reached the max allowed children')
             
         self._children.append(child)
         
@@ -205,7 +226,7 @@ class Compound(Attr):
             valid_size = self.count() == self._target_size
             
         if not valid_size:
-            pm.error('UserData Module: {0} does not have the required number of children'.format(self.attr_type))
+            pm.error('user_data module: {0} does not have the required number of children'.format(self.attr_type))
 
 
 
@@ -364,7 +385,7 @@ class BaseData(Attr):
     @classmethod     
     def _get_records(cls, node, force_add ):
         if not node:
-            pm.error('UserData Module : Can\'t get records. node is None')
+            pm.error('user_data Module : Can\'t get records. node is None')
             
         has_records = pm.hasAttr(node, _RECORDS_NAME)
                 
@@ -448,7 +469,7 @@ class BaseData(Attr):
                 record_names.append( record.name )            
 
             class_name = self.__class__.__name__
-            errorMessage = 'UserData Attribute Conflict :: Attribute Name(s) : {0} from class "{1}" conflicts with one of these existing blocks of data : {2}'
+            errorMessage = 'user_data Attribute Conflict :: Attribute Name(s) : {0} from class "{1}" conflicts with one of these existing blocks of data : {2}'
             pm.error( errorMessage.format(conflicts, class_name, record_names) )
  
                
@@ -504,7 +525,7 @@ class BaseData(Attr):
         the attributes they want to create and store in Maya. The function
         must also be declared as a class or static method.        
         """
-        pm.error( 'UserData Module: You\'re attempting to get attributes for class {0} that has no get_attributes() overridden'.format(cls.__name__) )       
+        pm.error( 'user_data Module: You\'re attempting to get attributes for class {0} that has no get_attributes() overridden'.format(cls.__name__) )       
        
        
 ###----Update Methods----
@@ -741,7 +762,7 @@ class BaseData(Attr):
 ###----Misc Methods----
     
     @classmethod
-    def create_node(cls, nodeType = _DEFAULT_NODE_TYPE, *args, **kwargs):
+    def create_node(cls, nodeType = DEFAULT_NODE_TYPE, *args, **kwargs):
         """Creates a new node in Maya that also contains the Class attributes.
         
         The default node type that's created is driven by
@@ -843,10 +864,10 @@ class Utils(object):
         if conflicts:
             for attr_name in conflicts:
                 classes = conflicts[attr_name]
-                pm.warning( 'UserData.Utils :: Attr conflict. : "{0}" exists in classes: {1}'.format(attr_name, classes))
+                pm.warning( 'user_data.Utils :: Attr conflict. : "{0}" exists in classes: {1}'.format(attr_name, classes))
                 
             if error_on_conflict:
-                pm.error( 'UserData.Utils :: Found conflict between attribute names. See console for info.')
+                pm.error( 'user_data.Utils :: Found conflict between attribute names. See console for info.')
                 
         return conflicts
     
@@ -888,7 +909,7 @@ class Utils(object):
     
     
     @staticmethod
-    def validate_version(node = None, *args, **kwargs):
+    def validate_version(nodes = None, *args, **kwargs):
         """Force version validation on the given node conditions
 
         This function can be used to ensure current scene nodes have their
