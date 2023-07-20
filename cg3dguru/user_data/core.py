@@ -632,17 +632,17 @@ class BaseData(Attr):
     def get_prefix(cls):
         """Retuns the prefix to append to all class attributes
         
-        The deault prefix matches the python class name. The prefix
-        is designed to limit the potential of an attribute name collision
-        between mutliple user_data blocks assigned to the same maya node.
-        Users can return '' if they don't want a prefix added to their
-        attribute names.  The prefix will automaticallly be separated by '_'
+        The deault prefix is an empty string. The prefix is designed to limit
+        the potential of an attribute name collision between mutliple
+        user_data blocks assigned to the same maya node. Users can return ''
+        if they don't want a prefix added to their attribute names. Any valid
+        prefix will automaticallly be separated by '_'
         
         NOTE: If you decided to change the prefix once the data is production
         then you'll need to override update_version() with your own logic
         as old names and new names won't match when updating the data block.        
         """
-        return cls.__name__
+        return ''
     
     
     @classmethod

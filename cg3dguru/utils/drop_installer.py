@@ -63,6 +63,150 @@ class Platforms(object):
             return 'linux'
         else:
             return 'windows'
+        
+        
+        
+class Commandline(object):
+    @staticmethod        
+    def get_python_version():
+        """Get the running version of python as a tuple of 3 ints"""
+        pmax, pmin, patch =  sys.version.split(' ')[0].split('.')
+        return( int(pmax), int(pmin), int(patch))
+    
+    
+    @staticmethod
+    def get_platform():
+        result = platform.platform().lower()
+        if 'darwin' in result:
+            return Platforms.OSX
+        elif 'linux' in result:
+            return Platforms.LINUX
+        elif 'window' in result:
+            return Platforms.WINDOWS
+        else:
+            raise ValueError('Unknown Platform Type:{0}'.format(result))
+    
+    
+    @staticmethod    
+    def run_shell_command(cmd, description):
+        #NOTE: don't use subprocess.check_output(cmd), because in python 3.6+ this error's with a 120 code.
+        print('\n{0}'.format(description))
+        print('Calling shell command: {0}'.format(cmd))
+
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = proc.communicate()
+        stdout = stdout.decode()
+        stderr = stderr.decode()
+        
+        print(stdout)
+        print(stderr)
+        if proc.returncode:
+            raise Exception('Command Failed:\nreturn code:{0}\nstderr:\n{1}\n'.format(proc.returncode, stderr))
+        
+        return(stdout, stderr)
+    
+        
+    @staticmethod
+    def get_python_paths():
+        """Returns maya's python path and location of a global pip
+        
+        Note: The pip path might not exist on the system.
+        """
+        python_path = ''
+        pip_path = ''
+        pmax, pmin, patch = Commandline.get_python_version()
+        platform = Commandline.get_platform()
+        
+        version_str = '{0}.{1}'.format(pmax, pmin)
+        if platform == Platforms.WINDOWS:
+            python_path = os.path.join(os.getenv('MAYA_LOCATION'), 'bin', 'mayapy.exe')
+            if pmax > 2:
+                #python3 pip path
+                pip_path = os.path.join(os.getenv('APPDATA'), 'Python', 'Python{0}{1}'.format(pmax, pmin), 'Scripts', 'pip{0}.exe'.format(version_str))
+            else:
+                #python2 pip path
+                pip_path = os.path.join(os.getenv('APPDATA'), 'Python', 'Scripts', 'pip{0}.exe'.format(version_str))
+
+        elif platform == Platforms.OSX:
+            python_path = '/usr/bin/python'
+            pip_path = os.path.join( expanduser('~'), 'Library', 'Python', version_str, 'bin', 'pip{0}'.format(version_str) )
+     
+        elif platform == Platforms.LINUX:
+            python_path = os.path.join(os.getenv('MAYA_LOCATION'), 'bin', 'mayapy')
+            pip_path = os.path.join( expanduser('~'), '.local', 'bin', 'pip{0}'.format(version_str) )
+             
+        return (python_path, pip_path)
+    
+    
+    
+    @staticmethod
+    def get_command_string():
+        """returns a commandline string for launching pip commands
+        
+        If the end-user is on linux then is sounds like calling pip from Mayapy
+        can cause dependencies issues when using a default python install.
+        So if the user is on osX or windows OR they're on linux and don't
+        have python installed, then we'll use "mayapy -m pip" else we'll
+        use the pipX.exe to run our commands.        
+        """
+        python_path, pip_path = Commandline.get_python_paths()
+        platform = Commandline.get_platform()        
+
+        command = '{0}&-m&pip'.format(python_path)
+        global_pip = False
+        if platform == Platforms.LINUX:
+            try:
+                #I don't use "python" here, because on windows that opens the MS store vs. erroring.
+                #No clue what it might do on linux
+                Commandline.run_shell_command(['py'], 'Checking python install')
+                command = pip_path
+                global_pip = True
+            except:
+                #Python isn't installed on linux, so the default command is good
+                pass
+            
+        return (command,  global_pip)
+
+                
+    @staticmethod
+    def pip_install(repo_name, pip_args = [], *args, **kwargs):
+        pip_command, global_pip = Commandline.get_command_string()
+        cmd_str = ('{0}&install&{1}').format(pip_command, repo_name)
+        args = cmd_str.split('&') + pip_args
+        stdout, stderr = Commandline.run_shell_command(args, 'PIP:Installing Package')
+        
+        return stdout
+    
+    
+    @staticmethod
+    def pip_uninstall(repo_name, pip_args = [], *args, **kwargs):
+        pip_command, global_pip = Commandline.get_command_string()
+        cmd_str = ('{0}&uninstall&{1}').format(pip_command, repo_name)
+        args = cmd_str.split('&') + pip_args
+        stdout, stderr = Commandline.run_shell_command(args, 'PIP:Installing Package')
+        
+        return stdout
+    
+
+    @staticmethod
+    def pip_list(pip_args = [], *args, **kwargs):
+        pip_command, global_pip  = Commandline.get_command_string()
+        cmd_str = ('{0}&list').format(pip_command)
+        args = cmd_str.split('&') + pip_args
+        stdout, stderr = Commandline.run_shell_command(args, 'PIP:Listing Packages')
+        
+        return stdout    
+
+
+    @staticmethod
+    def pip_show(repo_name, pip_args = [], *args, **kwargs):
+        pip_command, global_pip  = Commandline.get_command_string()
+        cmd_str = ('{0}&show&{1}').format(pip_command, repo_name)
+        args = cmd_str.split('&') + pip_args
+        stdout, stderr = Commandline.run_shell_command(args, 'PIP:Show Package Info')
+        
+        return stdout        
+        
 
         
 class ModuleDefinition(object):
@@ -113,6 +257,7 @@ class ModuleDefinition(object):
         return return_string
 
 
+
 class ModuleManager(QThread):
     """Used to edit .mod files quickly and easily."""
     
@@ -131,10 +276,9 @@ class ModuleManager(QThread):
             self.package_name = self.module_name
         
         self.maya_version = self.get_app_version()
-        self.platform = self.get_platform()
+        self.platform = Commandline.get_platform()
         
-        
-        self.max, self.min, self.patch = ModuleManager.get_python_version()
+        self.max, self.min, self.patch = Commandline.get_python_version()
         
         #common locations
         self._version_specific = self.is_version_specific()  
@@ -154,21 +298,14 @@ class ModuleManager(QThread):
         self.package_install_path = self.get_package_install_path()
         
         #Non-Maya python and pip paths are needed for installing on linux (and OsX?)
-        self.python_path, self.pip_path = self.get_python_paths()
-        self.command_string, self.uses_global_pip = self.get_command_string()
+        self.python_path, self.pip_path = Commandline.get_python_paths()
+        self.command_string, self.uses_global_pip = Commandline.get_command_string()
      
     
     def __del__(self):
         #TODO: Determine why I put a wait on this fuction 
         self.wait()
  
-
-    @staticmethod        
-    def get_python_version():
-        """Get the running version of python as a tuple of 3 ints"""
-        pmax, pmin, patch =  sys.version.split(' ')[0].split('.')
-        return( int(pmax), int(pmin), int(patch))
-       
        
     @staticmethod
     def get_app_version():
@@ -188,19 +325,6 @@ class ModuleManager(QThread):
     
     
     @staticmethod
-    def get_platform():
-        result = platform.platform().lower()
-        if 'darwin' in result:
-            return Platforms.OSX
-        elif 'linux' in result:
-            return Platforms.LINUX
-        elif 'window' in result:
-            return Platforms.WINDOWS
-        else:
-            raise ValueError('Unknown Platform Type:{0}'.format(result))
-    
-    
-    @staticmethod
     def make_folder(folder_path):
         print(folder_path)
         
@@ -211,132 +335,13 @@ class ModuleManager(QThread):
     @staticmethod
     def get_ui_parent():
         return wrapInstance( int(omui.MQtUtil.mainWindow()), QMainWindow )      
- 
-
-    @staticmethod    
-    def run_shell_command(cmd, description):
-        #NOTE: don't use subprocess.check_output(cmd), because in python 3.6+ this error's with a 120 code.
-        print('\n{0}'.format(description))
-        print('Calling shell command: {0}'.format(cmd))
-
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = proc.communicate()
-        stdout = stdout.decode()
-        stderr = stderr.decode()
-        
-        print(stdout)
-        print(stderr)
-        if proc.returncode:
-            raise Exception('Command Failed:\nreturn code:{0}\nstderr:\n{1}\n'.format(proc.returncode, stderr))
-        
-        return(stdout, stderr)
-    
-        
-    @staticmethod
-    def get_python_paths():
-        """Returns maya's python path and location of a global pip
-        
-        Note: The pip path might not exist on the system.
-        """
-        python_path = ''
-        pip_path = ''
-        pmax, pmin, patch = ModuleManager.get_python_version()
-        platform = ModuleManager.get_platform()
-        
-        version_str = '{0}.{1}'.format(pmax, pmin)
-        if platform == Platforms.WINDOWS:
-            python_path = os.path.join(os.getenv('MAYA_LOCATION'), 'bin', 'mayapy.exe')
-            if pmax > 2:
-                #python3 pip path
-                pip_path = os.path.join(os.getenv('APPDATA'), 'Python', 'Python{0}{1}'.format(pmax, pmin), 'Scripts', 'pip{0}.exe'.format(version_str))
-            else:
-                #python2 pip path
-                pip_path = os.path.join(os.getenv('APPDATA'), 'Python', 'Scripts', 'pip{0}.exe'.format(version_str))
-
-        elif platform == Platforms.OSX:
-            python_path = '/usr/bin/python'
-            pip_path = os.path.join( expanduser('~'), 'Library', 'Python', version_str, 'bin', 'pip{0}'.format(version_str) )
-     
-        elif platform == Platforms.LINUX:
-            python_path = os.path.join(os.getenv('MAYA_LOCATION'), 'bin', 'mayapy')
-            pip_path = os.path.join( expanduser('~'), '.local', 'bin', 'pip{0}'.format(version_str) )
-             
-        return (python_path, pip_path)
-         
-            
-    @staticmethod
-    def get_command_string():
-        """returns a commandline string for launching pip commands
-        
-        If the end-user is on linux then is sounds like calling pip from Mayapy
-        can cause dependencies issues when using a default python install.
-        So if the user is on osX or windows OR they're on linux and don't
-        have python installed, then we'll use "mayapy -m pip" else we'll
-        use the pipX.exe to run our commands.        
-        """
-        python_path, pip_path = ModuleManager.get_python_paths()
-        platform = ModuleManager.get_platform()        
-
-        command = '{0}&-m&pip'.format(python_path)
-        global_pip = False
-        if platform == Platforms.LINUX:
-            try:
-                #I don't use "python" here, because on windows that opens the MS store vs. erroring.
-                #No clue what it might do on linux
-                ModuleManager.run_shell_command(['py'], 'Checking python install')
-                command = pip_path
-                global_pip = True
-            except:
-                #Python isn't installed on linux, so the default command is good
-                pass
-            
-        return (command,  global_pip)
-
-                
-    @staticmethod
-    def pip_install(repo_name, pip_args = [], *args, **kwargs):
-        pip_command, global_pip = ModuleManager.get_command_string()
-        cmd_str = ('{0}&install&{1}').format(pip_command, repo_name)
-        args = cmd_str.split('&') + pip_args
-        stdout, stderr = ModuleManager.run_shell_command(args, 'PIP:Installing Package')
-        
-        return stdout
-    
-    
-    @staticmethod
-    def pip_uninstall(repo_name, pip_args = [], *args, **kwargs):
-        pip_command, global_pip = ModuleManager.get_command_string()
-        cmd_str = ('{0}&uninstall&{1}').format(pip_command, repo_name)
-        args = cmd_str.split('&') + pip_args
-        stdout, stderr = ModuleManager.run_shell_command(args, 'PIP:Installing Package')
-        
-        return stdout
-    
-
-    @staticmethod
-    def pip_list(pip_args = [], *args, **kwargs):
-        pip_command, global_pip  = ModuleManager.get_command_string()
-        cmd_str = ('{0}&list').format(pip_command)
-        args = cmd_str.split('&') + pip_args
-        stdout, stderr = ModuleManager.run_shell_command(args, 'PIP:Listing Packages')
-        
-        return stdout    
-
-    @staticmethod
-    def pip_show(repo_name, pip_args = [], *args, **kwargs):
-        pip_command, global_pip  = ModuleManager.get_command_string()
-        cmd_str = ('{0}&show&{1}').format(pip_command, repo_name)
-        args = cmd_str.split('&') + pip_args
-        stdout, stderr = ModuleManager.run_shell_command(args, 'PIP:Show Package Info')
-        
-        return stdout
-    
+   
     
     @staticmethod
     def package_installed(package_name):
         """returns True if the repo is already on the system"""
         
-        return ModuleManager.pip_list().find(package_name) != -1
+        return Commandline.pip_list().find(package_name) != -1
     
 
     @staticmethod
@@ -368,22 +373,12 @@ class ModuleManager(QThread):
         # might or might not be registered with PyPi
         
               
-        result = ModuleManager.pip_list(pip_args =['--uptodate'])
+        result = Commandline.pip_list(pip_args =['--uptodate'])
         outdated = result.find(package_name) == -1
         if outdated:
             return True
         else:
             return False
-    
-    
-    #def get_pip_list(self, *args, **kwargs):
-        #result = Custom_Installer.pip_list(*args, **kwargs)
-        #return result
-        
-    
-    #def get_pip_show(self, *args, **kwargs):
-        #result = Custom_Installer.pip_show(self.package_name, *args, **kwargs)
-        #return result
     
 
     def install_remote_package(self, package_name = '', to_module = True):
@@ -400,7 +395,7 @@ class ModuleManager(QThread):
                 #r'--editable=git+{0}#egg={1}'.format(github, self.repo_name), 
                 r'--target={0}'.format(self.scripts_path), 
             ]
-        self.pip_install(package_name, pip_args)
+        Commandline.pip_install(package_name, pip_args)
     
     
     def get_remote_package(self):
@@ -431,7 +426,7 @@ class ModuleManager(QThread):
         if self.platform == Platforms.OSX:
             #cmd = 'curl https://bootstrap.pypa.io/pip/{0}/get-pip.py -o {1}'.format(pip_folder, pip_installer).split(' ')
             cmd = 'curl https://bootstrap.pypa.io/pip/get-pip.py -o {0}'.format(get_pip_path).split(' ')
-            self.run_shell_command(cmd, 'get-pip')
+            Commandline.run_shell_command(cmd, 'get-pip')
 
         else:
             # this should be using secure https, but we should be fine for now
@@ -457,7 +452,7 @@ class ModuleManager(QThread):
             python_str = self.python_path
             
         cmd = '{0}&{1}&--user&pip'.format(python_str, get_pip_path).split('&')
-        self.run_shell_command(cmd, 'install pip')
+        Commandline.run_shell_command(cmd, 'install pip')
         
         print('Global PIP is ready for use!')
         
@@ -626,7 +621,7 @@ class ModuleManager(QThread):
         """
         maya_version = str(self.maya_version)
         relative_path = '.\{0}'.format(self.relative_module_path)        
-        platform_name =  self.get_platform_string(self.get_platform())
+        platform_name =  self.get_platform_string(Commandline.get_platform())
         
         if not self._version_specific:
             maya_version = ''
@@ -730,7 +725,7 @@ class ModuleManager(QThread):
     def install_pymel(self):
         """Installs pymel to a common Maya location"""
         if not self.package_installed('pymel'):
-            self.pip_install('pymel')
+            Commandline.pip_install('pymel')
         
     
     
