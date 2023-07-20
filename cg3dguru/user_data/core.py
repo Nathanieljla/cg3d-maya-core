@@ -473,8 +473,8 @@ class BaseData(Attr):
             pm.error( errorMessage.format(conflicts, class_name, record_names) )
  
                
-    def _add_attr(self, attr, suffix, parent_name):
-        attr_name = suffix + attr.name
+    def _add_attr(self, attr, prefix, parent_name):
+        attr_name = prefix + attr.name
         
         if parent_name:
             attr._flags['parent'] = parent_name
@@ -629,20 +629,30 @@ class BaseData(Attr):
     
     
     @classmethod
-    def get_suffix(cls):
-        """Retuns the suffix to append to all class attributes
+    def get_prefix(cls):
+        """Retuns the prefix to append to all class attributes
         
-        The deault suffix matches the python class name. The suffix
+        The deault prefix matches the python class name. The prefix
         is designed to limit the potential of an attribute name collision
         between mutliple user_data blocks assigned to the same maya node.
-        Users can return '' if they don't want a suffix added to their
-        attribute names.  The suffix will automaticallly be separated by '_'
+        Users can return '' if they don't want a prefix added to their
+        attribute names.  The prefix will automaticallly be separated by '_'
         
-        NOTE: If you decided to change the suffix once the data is production
+        NOTE: If you decided to change the prefix once the data is production
         then you'll need to override update_version() with your own logic
         as old names and new names won't match when updating the data block.        
         """
         return cls.__name__
+    
+    
+    @classmethod
+    def get_attr_name(cls, attr_name):
+        """return the input attribute name with an class prefix"""
+        prefix = cls.get_prefix()
+        if prefix:
+            prefix += '_'
+            
+        return prefix + attr_name
             
     
     def _create_data(self):     
@@ -650,12 +660,12 @@ class BaseData(Attr):
         long_name = self.get_name()
         pm.addAttr(self._node, ln = long_name, at = 'compound', nc = len( attrs ), **self._flags )
 
-        suffix = self.get_suffix()
-        if suffix:
-            suffix += '_'
+        prefix = self.get_prefix()
+        if prefix:
+            prefix += '_'
 
         for attr in attrs:
-            self._add_attr(attr, suffix, long_name)       
+            self._add_attr(attr, prefix, long_name)       
          
         return self._node.attr(long_name)
         

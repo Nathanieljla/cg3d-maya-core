@@ -39,7 +39,7 @@ class UserDataEditor(ui.Window):
         jobId   = pm.scriptJob( event=['SelectionChanged', self.MayaSelectionChanged] )
         #print 'New Job: {0}'.format(jobId)
         self.handler = lambda : self.RemoveScriptJob(jobId)
-        self.jobId = jobId
+        #self.jobId = jobId
         self.ui.destroyed.connect( self.handler )        
         
         

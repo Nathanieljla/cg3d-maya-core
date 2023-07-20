@@ -21,18 +21,19 @@ class Window(object): #QWidget):
     mayaWindow = None
     
     
-    def __init__(self, windowKey, uiFilepath, *args, **kwargs):
+    def __init__(self, windowKey, uiFilepath, custom_widgets = None, *args, **kwargs):
         if not os.path.exists(uiFilepath):
             raise FileNotFoundError("Invalid path {}".format(uiFilepath))
         
         self.add_window(windowKey, self)
         
         loader = QUiLoader()
-        file = QFile(uiFilepath)
-        file.open(QFile.ReadOnly)
+        if custom_widgets:
+            for widget in custom_widgets:
+                loader.registerCustomWidget(widget)
+        
         self.mainWindow = self.get_maya_window()
-        self.ui = loader.load( file, parentWidget = self.mainWindow )  
-        file.close()     
+        self.ui = loader.load( uiFilepath, parentWidget = self.mainWindow )   
   
     @classmethod
     def add_window(cls, windowKey, instance):
