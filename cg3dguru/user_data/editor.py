@@ -16,8 +16,8 @@ class UserDataEditor(ui.Window):
     def __init__(self, windowKey, uiFilepath, *args, **kwargs):
         super(UserDataEditor, self).__init__(windowKey, uiFilepath)
 
-        self.AddScriptJob()
-        self.maya_nodes_selected = False
+        self.add_script_job()
+        self.maya_nodes_selected = len(pm.ls(sl=True)) > 0
 
         self.classes = cg3dguru.user_data.Utils.get_class_names()
         keys = list(self.classes.keys())
@@ -25,31 +25,47 @@ class UserDataEditor(ui.Window):
         self.ui.createDataList.addItems(keys)
         self.ui.searchDataList.addItems(keys)
         
-        self.ui.createDataList.itemSelectionChanged.connect( lambda : self.SelectionChanged(self.ui.createDataList) )
-        self.ui.searchDataList.itemSelectionChanged.connect( lambda : self.SelectionChanged(self.ui.searchDataList) )
+        self.ui.createDataList.itemSelectionChanged.connect(lambda: self.on_selection_changed(self.ui.createDataList))
+        self.ui.searchDataList.itemSelectionChanged.connect( lambda : self.on_selection_changed(self.ui.searchDataList) )
         
-        self.ui.createData.clicked.connect(self.Create)
-        self.ui.addData.clicked.connect(self.Add)
-        self.ui.removeData.clicked.connect(self.Delete)
-        self.ui.sceneSelect.clicked.connect(self.SelectFromScene)
-        self.ui.filterSelection.clicked.connect(self.FindInSelection)
+        self.ui.createData.clicked.connect(self.on_create)
+        self.ui.addData.clicked.connect(self.on_add)
+        self.ui.removeData.clicked.connect(self.on_delete)
+        self.ui.sceneSelect.clicked.connect(self.on_select_from_scene)
+        self.ui.filterSelection.clicked.connect(self.on_find_in_selection)
+        self.ui.attribute_conflicts.clicked.connect(self.on_attribute_conflicts)
         
         
-    def AddScriptJob(self):
-        jobId   = pm.scriptJob( event=['SelectionChanged', self.MayaSelectionChanged] )
+    def on_attribute_conflicts(self, *args, **kwargs):
+        conflicts = cg3dguru.user_data.Utils.find_attribute_conflicts(error_on_conflict=False)
+
+        output = ''
+        if conflicts:
+            for attr_name in conflicts:
+                classes = conflicts[attr_name]
+                output += 'Attr Conflict: "{0}" exists in classes: {1}\n'.format(attr_name, classes)
+        else:
+            output = 'No attribute conflicts found. :)'
+
+        self.ui.report_results.clear()
+        self.ui.report_results.setPlainText(output)
+        
+        
+    def add_script_job(self):
+        jobId   = pm.scriptJob( event=['SelectionChanged', self.maya_selection_changed] )
         #print 'New Job: {0}'.format(jobId)
-        self.handler = lambda : self.RemoveScriptJob(jobId)
+        self.handler = lambda : self.remove_script_job(jobId)
         #self.jobId = jobId
         self.ui.destroyed.connect( self.handler )        
         
         
-    def RemoveScriptJob(self, jobId):
+    def remove_script_job(self, jobId):
         #print 'Nuke Job: {0}'.format(jobId)
         self.ui.destroyed.disconnect( self.handler )
         pm.scriptJob( kill = jobId )
         
         
-    def _GetItemNames(self, listWidget):
+    def _get_item_names(self, listWidget):
         selection = listWidget.selectedItems()
         names = []
         for item in selection:
@@ -58,8 +74,8 @@ class UserDataEditor(ui.Window):
         return names
         
         
-    def Create(self):
-        names = self._GetItemNames(self.ui.createDataList)
+    def on_create(self):
+        names = self._get_item_names(self.ui.createDataList)
         newNodes = []
         
         for name in names:
@@ -73,58 +89,63 @@ class UserDataEditor(ui.Window):
             self.ui.statusbar.showMessage("No Data is selected")
     
     
-    def Add(self):
-        names = self._GetItemNames(self.ui.createDataList)
+    def on_add(self):
+        names = self._get_item_names(self.ui.createDataList)
         cg3dguru.user_data.Utils.validate_version(sl=True)
         
         for name in names:
-            data_class = self.classes[name]()
-            for mayaNode in pm.ls(sl=True):
-                data_class.add_data( mayaNode )
+            data_class = self.classes[name] #()
+            for maya_node in pm.ls(sl=True):
+                data_class.add_data( maya_node )
                 
-        self.SelectionChanged(self.ui.createDataList)
+        self.on_selection_changed(self.ui.createDataList)
     
     
-    def Delete(self): 
+    def on_delete(self): 
         selection = pm.ls(sl=True)
-        names = self._GetItemNames(self.ui.createDataList)
+        names = self._get_item_names(self.ui.createDataList)
         
         for name in names:
-            dataClass = self.classes[name]()
+            data_class = self.classes[name] #()
             for mayaNode in selection:
-                dataClass.delete_data( mayaNode )
+                data_class.delete_data( mayaNode )
                 
-        self.MayaSelectionChanged()
+        self.maya_selection_changed()
     
     
     
-    def _Select(self, *args, **kwargs):
-        names = self._GetItemNames(self.ui.searchDataList)
+    def _select(self, *args, **kwargs):
+        names = self._get_item_names(self.ui.searchDataList)
         
         nodes = []
         for name in names:
-            dataClass = self.classes[name]()            
-            foundNodes = cg3dguru.user_data.Utils.get_nodes_with_data(data_class=dataClass, **kwargs)
+            data_class = self.classes[name] #()
+            found_nodes = cg3dguru.user_data.Utils.get_nodes_with_data(data_class=data_class, **kwargs)
             
-            nodes.extend(foundNodes)
+            nodes.extend(found_nodes)
             
-        pm.select(nodes, replace = True)    
-        
-    
-    def SelectFromScene(self):
-        self._Select()
+        pm.select(nodes, replace=True)
+        if not nodes:
+            self.ui.statusbar.showMessage('No data found!', 5000)
+        else:
+            self.ui.statusbar.clearMessage()
+
+
+
+    def on_select_from_scene(self):
+        self._select()
             
     
-    def FindInSelection(self):
-        self._Select(sl=True)
+    def on_find_in_selection(self):
+        self._select(sl=True)
     
     
-    def SelectionChanged(self, listWidget):
+    def on_selection_changed(self, list_widget):
         #is anything selected in our list?
-        enable = len( listWidget.selectedItems() ) > 0
+        enable = len( list_widget.selectedItems() ) > 0
         
-        if listWidget is self.ui.createDataList:
-            names = self._GetItemNames(self.ui.createDataList)
+        if list_widget is self.ui.createDataList:
+            names = self._get_item_names(self.ui.createDataList)
             hasData  = False
             missData = False
             
@@ -144,13 +165,13 @@ class UserDataEditor(ui.Window):
             print ("search list")
             
             
-    def MayaSelectionChanged(self):
+    def maya_selection_changed(self):
         self.maya_nodes_selected = len( pm.ls(sl=True) ) > 0
         
         if self.ui.createDataList.isVisible():
-            self.SelectionChanged(self.ui.createDataList)
+            self.on_selection_changed(self.ui.createDataList)
         else:
-            self.SelectionChanged(self.ui.searchDataList)
+            self.on_selection_changed(self.ui.searchDataList)
     
  
 def run(data_module = None):

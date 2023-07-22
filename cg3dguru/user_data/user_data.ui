@@ -6,19 +6,22 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>381</width>
-    <height>542</height>
+    <width>474</width>
+    <height>609</height>
    </rect>
   </property>
   <property name="windowTitle">
-   <string>User Data</string>
+   <string>User Data Editor</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="verticalLayout_2">
+   <layout class="QHBoxLayout" name="horizontalLayout_2">
     <item>
      <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
        <number>0</number>
+      </property>
+      <property name="documentMode">
+       <bool>false</bool>
       </property>
       <widget class="QWidget" name="createTab">
        <attribute name="title">
@@ -105,6 +108,48 @@
            </widget>
           </item>
          </layout>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="report_tab">
+       <attribute name="title">
+        <string>Report</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_2">
+        <property name="spacing">
+         <number>0</number>
+        </property>
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
+        <property name="topMargin">
+         <number>0</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
+        </property>
+        <item>
+         <widget class="QWidget" name="widget" native="true">
+          <layout class="QVBoxLayout" name="verticalLayout_6">
+           <item>
+            <widget class="QPushButton" name="attribute_conflicts">
+             <property name="text">
+              <string>Find Attribute Conflicts</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPlainTextEdit" name="report_results">
+             <property name="readOnly">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
         </item>
        </layout>
       </widget>

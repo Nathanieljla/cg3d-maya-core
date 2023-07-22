@@ -46,6 +46,9 @@ discovered. User's can decide this on a per-class instance by overriding
 BaseData.pre_update_version().
 """
 
+REPORT_WARNINGS = True
+"""Should this module throw warnings?"""
+
 class VersionUpdateException(Exception):
     """Thrown when BaseData.update_version() errors"""
     pass
@@ -86,7 +89,7 @@ class Attr(object):
         -parent or -p: Determined by the Compound class parent-child structure
         -numberOfChildren or -nc : Determined by the Compound class parent-child structure
         """
-        super(Attr, self).__init__() #*args, **kwargs)
+        super(Attr, self).__init__()
         
         self.name = name
         self.attr_type = attr_type
@@ -97,7 +100,7 @@ class Attr(object):
         flags.update( kwargs )
         self._clear_invalid_flags( flags )
         
-        self._flags   = flags
+        self._flags = flags
         
 
     @staticmethod
@@ -310,52 +313,34 @@ class BaseData(Attr):
     Additionally, per instance attrs doesn't make sense in the scheme
     of how data is stored and used by this module.
     """
-    
-    _version = (0, 0, 0)
-    """The current vesion of this class"""
+
+    _records = None
+    _node = None
+    _data_stack = []
 
     def __init__(self, *args, **kwargs):  
-        super(BaseData,self).__init__(self.get_name(), 'compound', *args, **kwargs)
-        
-        self._records = None
-        self._node    = None
+        super(BaseData, self).__init__(self.get_name(), 'compound', *args, **kwargs)
         
         self._init_class_attributes()
-
 
 ###----Versioning Methods----
 
     @classmethod
     def get_class_version(cls):
-        return cls._version
-    
+        return (0, 0, 0)
+     
 
-    @classmethod
-    def set_class_version(cls, version):
-        cls._version = version
-        
-        
     @classmethod
     def get_version_string(cls):
-        return '.'.join(map(str, cls._version))
+        return '.'.join(map(str, cls.get_class_version()))
 
-    
-    @property
-    def version(self):
-        return self.get_class_version()
-        
-        
-    @version.setter
-    def version(self, value):
-        self.set_class_version(value)
-        
-        
 ###----Record Methods-----
 
-    def _add_data_to_records(self):
-        if self._records:
+    @classmethod
+    def _add_data_to_records(cls):
+        if cls._records:
 
-            indices = self._records.getArrayIndices()
+            indices = cls._records.getArrayIndices()
             if not indices:
                 idx = 0
             else:
@@ -371,9 +356,9 @@ class BaseData(Attr):
             #concatenating the name and version is not as clean in code (vs
             #seperate attributes), but it makes end-user view from the
             #attribute editor clean while not taking up as much UI space
-            name = '{0}:{1}'.format( self.get_name(), self.get_version_string() )
-            self._records[idx].set( name )
-            self._records[idx].lock()
+            name = '{0}:{1}'.format( cls.get_name(), cls.get_version_string() )
+            cls._records[idx].set( name )
+            cls._records[idx].lock()
             
                   
     @staticmethod
@@ -449,31 +434,36 @@ class BaseData(Attr):
                   
 ###----Attribute Methods----
  
-    def _find_attr_conflicts(self):
-        attr_names = self.get_attribute_names()  
-        if 'multi' in self._flags or 'm' in self._flags:
+    @classmethod
+    def _find_attr_conflicts(cls):
+        attr_names = cls.get_attribute_names()
+        flags = cls.get_default_flags()
+        cls._clear_invalid_flags(flags)
+        
+        if 'multi' in flags or 'm' in flags:
+        #if 'multi' in cls._flags or 'm' in cls._flags:
             #I *believe* attributes that are part of a multi arg won't conflict.            
             attr_names = []       
         
-        attr_names.append( self.get_name() )
+        attr_names.append( cls.get_name() )
         
         conflicts = []
         for attr_name in attr_names:
-            if pm.hasAttr(self._node, attr_name):
+            if pm.hasAttr(cls._node, attr_name):
                 conflicts.append(attr_name)
                 
         if conflicts:
             record_names = []
-            for i in self._records.getArrayIndices():
-                record = Record(self._records[i])
+            for i in cls._records.getArrayIndices():
+                record = Record(cls._records[i])
                 record_names.append( record.name )            
 
-            class_name = self.__class__.__name__
+            class_name = cls.__name__
             errorMessage = 'user_data Attribute Conflict :: Attribute Name(s) : {0} from class "{1}" conflicts with one of these existing blocks of data : {2}'
             pm.error( errorMessage.format(conflicts, class_name, record_names) )
  
-               
-    def _add_attr(self, attr, prefix, parent_name):
+    @classmethod          
+    def _add_attr(cls, attr, prefix, parent_name):
         attr_name = prefix + attr.name
         
         if parent_name:
@@ -481,14 +471,14 @@ class BaseData(Attr):
            
         if isinstance(attr, Compound):
             attr.validate()
-            pm.addAttr(self._node, ln = attr_name, at = attr.attr_type, nc = attr.count(), **attr._flags)
+            pm.addAttr(cls._node, ln = attr_name, at = attr.attr_type, nc = attr.count(), **attr._flags)
             for child in attr.get_children():
-                self._add_attr(child, '', attr_name)
+                cls._add_attr(child, '', attr_name)
             
         elif attr.attr_type in Attr.data_types:
-            pm.addAttr(self._node, ln = attr_name, dt = attr.attr_type, **attr._flags)             
+            pm.addAttr(cls._node, ln = attr_name, dt = attr.attr_type, **attr._flags)             
         else:   
-            pm.addAttr(self._node, ln = attr_name, at = attr.attr_type, **attr._flags)     
+            pm.addAttr(cls._node, ln = attr_name, at = attr.attr_type, **attr._flags)     
            
            
     @classmethod                   
@@ -529,8 +519,9 @@ class BaseData(Attr):
        
        
 ###----Update Methods----
-
-    def pre_update_version(self, old_data, old_version_number):
+    
+    @classmethod
+    def pre_update_version(cls, old_data, old_version_number):
         """Determines if the update_version() should be called.
         
         Users can override this function if they wish to define their own
@@ -542,13 +533,17 @@ class BaseData(Attr):
             old_version_number (Tuple) : The version information of the old_data.
         
         Returns:
-            Bool: True if udpate_version() should be called, else False.
+            Bool: True if update_version() should be called, else False.
         """
         global AUTO_UPDATE
+        if not AUTO_UPDATE and REPORT_WARNINGS:
+            pm.warning('cg3dguru.user_data : Skip updating old data on "{}" of type "{}" because AUTO_UPDATE is False. Consider overriding pre_update_version(). Repress this warning with user_data.REPORT_WARNINGS = False'
+                       .format(old_data.node(), cls.__name__))
+        
         return AUTO_UPDATE
      
-      
-    def update_version(self, old_data, old_version_number):
+    @classmethod  
+    def update_version(cls, old_data, old_version_number):
         """Updates the data to the latest version of the Python defintion.
         
         The default implimentation of this happens in five steps.
@@ -573,33 +568,35 @@ class BaseData(Attr):
         
         
         #Copy the attribute values to a temporary node
-        temp_node, data = self.create_node(name = 'TRASH', ss=True)
-        name_list = self.get_attribute_names()
+        #cls._node = old_data.node()
+        
+        temp_node, data = cls.create_node(name = 'TRASH', ss=True)
+        name_list = cls.get_attribute_names()
         try:
-            pm.copyAttr(self._node, temp_node, at = name_list, ic = True, oc = True, values = True)
+            pm.copyAttr(cls._node, temp_node, at=name_list, ic=True, oc=True, values=True)
         except:
             #delete the tempNode
             pm.delete(temp_node)
             
-            message = 'Please impliment custom update logic for class: {0}  oldVersion: {1}  newVersion: {2}'.format( self.get_name(), old_version_number, self.version)
+            message = 'Please impliment custom update logic for class: {0}  oldVersion: {1}  newVersion: {2}'.format( cls.get_name(), old_version_number, cls.get_class_version())
             raise VersionUpdateException(message)
         
         #delete the attributes off the current node
-        pm.deleteAttr( self._node, at = self.get_name() )
+        pm.deleteAttr( cls._node, at = cls.get_name() )
         
         #rebuild with the latest definition
-        self._create_data()
+        cls._create_data()
 
         #transfer attributes back to original node
-        pm.copyAttr(temp_node, self._node, at = name_list, ic = True, oc = True, values = True)  
+        pm.copyAttr(temp_node, cls._node, at = name_list, ic = True, oc = True, values = True)  
         
         #delete the tempNode
         pm.delete(temp_node)
         
         return True
 
-        
-    def post_update_version(self, data, update_successful):
+    @classmethod    
+    def post_update_version(cls, data, update_successful):
         """Called after update_version()
         
         The default implimentation does nothing. Users can override
@@ -653,24 +650,29 @@ class BaseData(Attr):
             prefix += '_'
             
         return prefix + attr_name
-            
-    
-    def _create_data(self):     
-        attrs = self.__class__.attributes
-        long_name = self.get_name()
-        pm.addAttr(self._node, ln = long_name, at = 'compound', nc = len( attrs ), **self._flags )
 
-        prefix = self.get_prefix()
+            
+    @classmethod
+    def _create_data(cls):     
+        attrs = cls.attributes
+        long_name = cls.get_name()
+        
+        flags = cls.get_default_flags()
+        cls._clear_invalid_flags(flags)        
+        
+        pm.addAttr(cls._node, ln = long_name, at = 'compound', nc = len( attrs ), **flags )
+
+        prefix = cls.get_prefix()
         if prefix:
             prefix += '_'
 
         for attr in attrs:
-            self._add_attr(attr, prefix, long_name)       
+            cls._add_attr(attr, prefix, long_name)       
          
-        return self._node.attr(long_name)
+        return cls._node.attr(long_name)
         
-        
-    def post_create(self, data):
+    @classmethod   
+    def post_create(cls, data):
         """Called after the data has been created.
         
         This function doesn't do anything by default and exists purely
@@ -683,8 +685,8 @@ class BaseData(Attr):
         """        
         pass
               
-    
-    def get_data(self, node, force_add = False):
+    @classmethod
+    def get_data(cls, node, force_add = False):
         """Attempts to return the class data stored on the input node.
         
         Args:
@@ -694,53 +696,59 @@ class BaseData(Attr):
         Returns:
             pymel.general.Attr : The data stored on the node or None.        
         """
-        #should be cleared, but let's be sure.
-        self._records = None
-        self._node    = node
+
+        #We need to cache the current data, because get_data might be called
+        #while doing an update. As this function gets deeper in scope, we
+        #need to make sure we reset the data as we leave the scope. reseting
+        #happens on exit.
+        cls._data_stack.append((cls._records, cls._node))
         
-        record = self.get_record(node)
+        cls._records = None
+        cls._node    = node
+        
+        record = cls.get_record(node)
         
         if not record and force_add:
             #lets make sure the records data exists
-            self._records = self._get_records(node, force_add = True)
+            cls._records = cls._get_records(node, force_add = True)
             
         #If found make sure the data block doesn't need updating.
         if record:
-            data_name = self.get_name() 
+            data_name = cls.get_name() 
             record_version = record.version
-            current_version = self.version
+            current_version = cls.get_class_version()
             
             #Attempt to updat the version
             if record_version < current_version:
-                old_data = self._node.attr(data_name)
+                old_data = cls._node.attr(data_name)
                 
-                if self.pre_update_version(old_data, record_version):
-                    updated = self.update_version(old_data, record_version)
+                if cls.pre_update_version(old_data, record_version):
+                    updated = cls.update_version(old_data, record_version)
                     if updated:
                         record.version = current_version
                                 
-                    data = self._node.attr(data_name)
-                    self.post_update_version( data, updated )
+                    data = cls._node.attr(data_name)
+                    cls.post_update_version( data, updated )
 
             
-            data = self._node.attr(data_name)
+            data = cls._node.attr(data_name)
                     
         #else, add the data to the node           
         elif force_add:
-            self._find_attr_conflicts()
-            data = self._create_data()
-            self._add_data_to_records()
-            self.post_create( data )
+            cls._find_attr_conflicts()
+            data = cls._create_data()
+            cls._add_data_to_records()
+            cls.post_create( data )
             
         else:
             data = None
-            
-        self._records = None        
-        self._node    = None
+
+        cls._records, cls._node = cls._data_stack.pop(-1)
+
         return data      
     
-        
-    def add_data(self, node):
+    @classmethod  
+    def add_data(cls, node):
         """Add class attributes to the input node.
         
         If the input node already has data on it then versioning is run to
@@ -752,21 +760,22 @@ class BaseData(Attr):
         Returns:
             pymel.general.Attr : The data added to the node.
         """
-        return self.get_data(node, force_add=True)
+        return cls.get_data(node, force_add=True)
+    
 
-
-    def delete_data(self, node):
+    @classmethod
+    def delete_data(cls, node):
         """Remove the class attributes off of the input node
 
         Args:
             node (pyNode) : The node to remove the data from.        
         """
-        record = self.get_record(node)
+        record = cls.get_record(node)
         
         if record:
             record.attr.unlock()
             pm.removeMultiInstance(record.attr, b=True)
-            pm.deleteAttr(node, at = self.get_name() )   
+            pm.deleteAttr(node, at = cls.get_name() )   
             
 
 ###----Misc Methods----
@@ -789,8 +798,8 @@ class BaseData(Attr):
         pynode = pm.general.createNode(nodeType, **kwargs)
     
         if pynode:
-            classInstance = cls()
-            data = classInstance.get_data(pynode, force_add = True)
+            #classInstance = cls()
+            data = cls.get_data(pynode, force_add=True)
             
         return (pynode, data)   
     
@@ -851,14 +860,14 @@ class Utils(object):
         conflicts = {}
         attrs = {}
         for subclass in Utils.get_classes():
-            default_flags = subclass.GetDefaultFlags()
+            default_flags = subclass.get_default_flags()
             
             #if the Class is going to be added with a mutli flag, then
             #there shouldn't be any conflicts with its attributes
             if 'm' in default_flags or 'multi' in default_flags:
                 continue
             
-            attribute_names = subclass.GetAttributeNames()
+            attribute_names = subclass.get_attribute_names()
             for attr_name in attribute_names:
                 if attr_name not in attrs:
                     attrs[attr_name] = [subclass.__name__]
@@ -874,7 +883,8 @@ class Utils(object):
         if conflicts:
             for attr_name in conflicts:
                 classes = conflicts[attr_name]
-                pm.warning( 'user_data.Utils :: Attr conflict. : "{0}" exists in classes: {1}'.format(attr_name, classes))
+                if REPORT_WARNINGS:
+                    pm.warning( 'user_data.Utils :: Attr conflict. : "{0}" exists in classes: {1}'.format(attr_name, classes))
                 
             if error_on_conflict:
                 pm.error( 'user_data.Utils :: Found conflict between attribute names. See console for info.')
@@ -951,11 +961,11 @@ class Utils(object):
         classes= Utils.get_classes()
         
         for data_class in classes:
-            instance = data_class()
-            
+            #instance = data_class()
             for node in nodes:
                 #this forces a version check
-                instance.get_data(node)
+                data_class.get_data(node)
+                #instance.get_data(node)
 
         
             
