@@ -56,8 +56,7 @@ def strip_namespace(filename):
 
 
 def set_export_options(export_type):
-    
-    start = int( pymel.core.animation.playbackOptions(query=True, animationStartTime = True))
+    start = int(pymel.core.animation.playbackOptions(query=True, animationStartTime=True))
     end   = int( pymel.core.animation.playbackOptions(query=True, animationEndTime = True))
     bake_anims = bool(export_type & EXPORT_ANIM)
     export_rig = bool(export_type & EXPORT_RIG)
@@ -84,11 +83,11 @@ def set_export_options(export_type):
     pymel.core.mel.FBXExportInAscii(v=True)
     pymel.core.mel.FBXExportFileVersion(v='FBX201300')
     
-    pymel.core.mel.FBXExportAnimationOnly(v= not export_rig )
+    pymel.core.mel.FBXExportAnimationOnly(v=not export_rig)
+    
 
 
-
-def export(export_type = EXPORT_ANIM_RIG, filename = '', strip_namespace = False):
+def export(export_type=EXPORT_ANIM_RIG, filename='', strip_namespace=False):
     set_export_options(export_type)
     
     if not filename:
@@ -99,29 +98,18 @@ def export(export_type = EXPORT_ANIM_RIG, filename = '', strip_namespace = False
         if os.path.exists(filename) and strip_namespace:
             strip_namespace(filename)  
     
-    
-    #_EXPORT_NODES = []
-        
-    ##find the game_data node:
-    #selection = pymel.core.general.ls(sl=True)
-    #for i in selection:
-        #print "exportingt {0}".format(i)
-        
-        #name = i.name()
-        #if 'GAME_DATA' in name:
-            #_EXPORT_NODES.append(i)
-            
-            
-    #for export_node in _EXPORT_NODES:
-        #filename = GetSaveFilename(export_node=export_node)
-        #if filename:
-            #pymel.core.mel.FBXExport(s=True, f=filename)
-            #if os.path.exists(filename):
-                #RemoveNamespace(filename)
-            
-    
+
 def export_anim(*args, **kwargs):
     export(export_type = EXPORT_ANIM_RIG, *args, **kwargs)
     
 def export_rig(*args, **kwargs):
-    export(export_type = EXPORT_RIG, *args, **kwargs)
+    export(export_type=EXPORT_RIG, *args, **kwargs)
+    
+
+def import_fbx(filepath):
+    ##https://help.autodesk.com/view/MAYAUL/2022/ENU/index.html?guid=GUID-699CDF74-3D64-44B0-967E-7427DF800290
+    pymel.core.mel.FBXImportMode(v='merge')
+    pymel.core.mel.FBXImport(f=filepath)
+
+
+    
