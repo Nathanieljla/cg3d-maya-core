@@ -1,2 +1,2 @@
-# cg3d-guru-lib
-The core of my Maya python scripts in a library that can easily be pulled into other projects/modules
+# cg3d-maya-core
+A package with general use functionality that can easily be pulled into other projects/modules
