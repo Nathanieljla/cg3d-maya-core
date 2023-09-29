@@ -1,6 +1,7 @@
 import pymel.core
 import os
 import re
+
 #http://tech-artists.org/forum/showthread.php?4988-Problem-doing-an-FBX-export-with-PyMEL
 #http://download.autodesk.com/global/docs/maya2014/en_us/index.html?url=files/GUID-377B0ACE-CEC8-4D13-81E9-E8C9425A8B6E.htm,topicNumber=d30e145135
 
@@ -56,6 +57,7 @@ def strip_namespace(filename):
 
 
 def set_export_options(export_type):
+    ##https://help.autodesk.com/view/MAYAUL/2022/ENU/index.html?guid=GUID-699CDF74-3D64-44B0-967E-7427DF800290
     start = int(pymel.core.animation.playbackOptions(query=True, animationStartTime=True))
     end   = int( pymel.core.animation.playbackOptions(query=True, animationEndTime = True))
     bake_anims = bool(export_type & EXPORT_ANIM)
@@ -109,6 +111,8 @@ def export_rig(*args, **kwargs):
 def import_fbx(filepath):
     ##https://help.autodesk.com/view/MAYAUL/2022/ENU/index.html?guid=GUID-699CDF74-3D64-44B0-967E-7427DF800290
     pymel.core.mel.FBXImportMode(v='merge')
+    pymel.core.mel.FBXImportFillTimeline(v=True)
+    pymel.core.mel.FBXImportSkins(v=True)
     pymel.core.mel.FBXImport(f=filepath)
 
 
