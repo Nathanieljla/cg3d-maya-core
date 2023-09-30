@@ -6,7 +6,7 @@ import importlib
 import pymel.core as pm
 
 import cg3dguru.ui as ui
-import cg3dguru.user_data
+import cg3dguru.udata
 
 WINDOW_NAME = 'User Data Editor'
 
@@ -19,7 +19,7 @@ class UserDataEditor(ui.Window):
         self.add_script_job()
         self.maya_nodes_selected = len(pm.ls(sl=True)) > 0
 
-        self.classes = cg3dguru.user_data.Utils.get_class_names()
+        self.classes = cg3dguru.udata.Utils.get_class_names()
         keys = list(self.classes.keys())
         keys.sort()
         self.ui.createDataList.addItems(keys)
@@ -37,7 +37,7 @@ class UserDataEditor(ui.Window):
         
         
     def on_attribute_conflicts(self, *args, **kwargs):
-        conflicts = cg3dguru.user_data.Utils.find_attribute_conflicts(error_on_conflict=False)
+        conflicts = cg3dguru.udata.Utils.find_attribute_conflicts(error_on_conflict=False)
 
         output = ''
         if conflicts:
@@ -91,7 +91,7 @@ class UserDataEditor(ui.Window):
     
     def on_add(self):
         names = self._get_item_names(self.ui.createDataList)
-        cg3dguru.user_data.Utils.validate_version(sl=True)
+        cg3dguru.udata.Utils.validate_version(sl=True)
         
         for name in names:
             data_class = self.classes[name] #()
@@ -120,7 +120,7 @@ class UserDataEditor(ui.Window):
         nodes = []
         for name in names:
             data_class = self.classes[name] #()
-            found_nodes = cg3dguru.user_data.Utils.get_nodes_with_data(data_class=data_class, **kwargs)
+            found_nodes = cg3dguru.udata.Utils.get_nodes_with_data(data_class=data_class, **kwargs)
             
             nodes.extend(found_nodes)
             
@@ -151,7 +151,7 @@ class UserDataEditor(ui.Window):
             
             for name in names:
                 data = None
-                data = cg3dguru.user_data.Utils.get_nodes_with_data(data_class = self.classes[name], sl=True)
+                data = cg3dguru.udata.Utils.get_nodes_with_data(data_class = self.classes[name], sl=True)
                 if data:
                     hasData  = True
                 
@@ -183,7 +183,7 @@ def run(data_module = None):
                 print("failed to import {}".format(data_module))
                 return
 
-    filepath = os.path.join(cg3dguru.user_data.__path__[0],  'user_data.ui' )
+    filepath = os.path.join(cg3dguru.udata.__path__[0],  'user_data.ui' )
     editor = UserDataEditor(WINDOW_NAME, filepath)
     editor.ui.show()
     
