@@ -1,4 +1,4 @@
-"""The user_data module creates and manages Maya attributes in a pythonic way
+"""The udata (user data) module creates and manages Maya attributes in a pythonic way
 
 Adding and managing custom attributes in Maya through Maya's standard low
 level functions such as addAttr() has a few drawbacks that this higher-level
@@ -24,7 +24,10 @@ the child size is predetermined.
 
 __author__ = "Nathaniel Albright"
 __email__ = "developer@3dcg.guru"
-__version__ = (0, 9, 0)
+
+VERSION = (0, 9, 0)
+__version__ = '.'.join(map(str, VERSION))
+
 
 import pymel.core as pm
 
