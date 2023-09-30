@@ -1,6 +1,21 @@
 """
-Drag-n-drop this into a maya viewport to install the packages
+Drag-n-drop this into a maya viewport to install packages
+
+This is copied from:
+https://github.com/Nathanieljla/cg3d-maya-core/blob/main/src/cg3dguru/utils/drop_installer.py
+
+If you want to modify this script for your own purposes it's better
+to pull a copy from the source location.
 """
+
+__author__ = "Nathaniel Albright"
+__email__ = "developer@3dcg.guru"
+
+VERSION = (0, 9, 0)
+__version__ = '.'.join(map(str, VERSION))
+
+
+
 import os
 import re
 import time
@@ -169,9 +184,9 @@ class Commandline(object):
 
                 
     @staticmethod
-    def pip_install(repo_name, pip_args = [], *args, **kwargs):
+    def pip_install(package, pip_args = [], *args, **kwargs):
         pip_command, global_pip = Commandline.get_command_string()
-        cmd_str = ('{0}&install&{1}').format(pip_command, repo_name)
+        cmd_str = ('{0}&install&{1}').format(pip_command, package)
         args = cmd_str.split('&') + pip_args
         stdout, stderr = Commandline.run_shell_command(args, 'PIP:Installing Package')
         
@@ -179,9 +194,9 @@ class Commandline(object):
     
     
     @staticmethod
-    def pip_uninstall(repo_name, pip_args = [], *args, **kwargs):
+    def pip_uninstall(package, pip_args = [], *args, **kwargs):
         pip_command, global_pip = Commandline.get_command_string()
-        cmd_str = ('{0}&uninstall&{1}').format(pip_command, repo_name)
+        cmd_str = ('{0}&uninstall&{1}').format(pip_command, package)
         args = cmd_str.split('&') + pip_args
         stdout, stderr = Commandline.run_shell_command(args, 'PIP:Installing Package')
         

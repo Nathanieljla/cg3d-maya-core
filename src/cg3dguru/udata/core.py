@@ -1,11 +1,11 @@
-"""The udata (user data) module creates and manages Maya attributes in a pythonic way
+"""The udata module creates and manages Maya attributes in a pythonic way
 
 Adding and managing custom attributes in Maya through Maya's standard low
 level functions such as addAttr() has a few drawbacks that this higher-level
 module attempts to overcome. These noteable improvements include:
 
-1. user_data handles all the back-end work of reading and writing
-user_data.BaseData class attributes to Maya attributes. Programmers and
+1. udata handles all the back-end work of reading and writing
+udata.BaseData class attributes to Maya attributes. Programmers and
 Tech-artists can simply search for their Python classes inside of a Maya
 scene or on a given node and work with the results.
 
@@ -32,9 +32,9 @@ __version__ = '.'.join(map(str, VERSION))
 import pymel.core as pm
 
 #Don't change _RECORDS_NAME unless your project really desires an alternative
-#name for the life of all scripts and tools that leverage the user_data module
+#name for the life of all scripts and tools that leverage the udata module
 #(and remember to change it whenever getting an updated version of the module).
-_RECORDS_NAME      = 'DataRecords'
+_RECORDS_NAME = 'DataRecords'
 """The name of the custom attr that tracks what data is on a node"""
 
 DEFAULT_NODE_TYPE = 'network'
@@ -60,13 +60,13 @@ class VersionUpdateException(Exception):
 class Attr(object):
     """A Wrapper for Maya's attribute arguements"""
     
-        
+    
     attr_types = set(['bool', 'long', 'short', 'byte', 'char', 'enum',
                       'float', 'double', 'doubleAngle', 'doubleLinear', 'message', 'time',
                       'fltMatrix'])
     """A list of attributeType names that use the -at flag"""    
     
-
+    
     data_types = set(['string', 'stringArray', 'matrix',
                       'reflectanceRGB', 'spectrumRGB', 'float2', 'float3', 'double2',
                       'double3', 'long2', 'long3', 'short2', 'short3', 'doubleArray',\
@@ -131,7 +131,8 @@ class Compound(Attr):
     
     For any -attributeType other than 'compound', users don't need to create
     the children attributes. For example: Compound("space", 'float3') will
-    automatically create spaceX, spaceY, spaceZ
+    automatically create spaceX, spaceY, spaceZ.  If you don't want auto
+    creation of child attributes then set make_elements=False on init.
     """
     
     compound_types = {'compound':0,
@@ -167,14 +168,14 @@ class Compound(Attr):
             children = []
         
         if attr_type not in Compound.compound_types:
-            pm.error('user_data Module: {0} is not a valid CompoundType.  Print Compound.CompoundTypes for valid list'.format(attr_type))
+            pm.error('udata Module: {0} is not a valid CompoundType.  Print Compound.CompoundTypes for valid list'.format(attr_type))
         
         self._target_size = Compound.compound_types[attr_type]
         self._children   = children
         
         if self._target_size and make_elements:
             if self._children:
-                pm.error('user_data Module: You supplied children, but also have make_elements = True.  Children will be erased')
+                pm.error('udata Module: You supplied children, but also have make_elements = True.  Children will be erased')
             
             self._make_elements()
 
@@ -207,7 +208,7 @@ class Compound(Attr):
         """Add an attribute to this Compound as a child"""
         
         if self._target_size and len(self._children) > self._target_size:
-            pm.error('user_data Module: Compound instance has reached the max allowed children')
+            pm.error('udata Module: Compound instance has reached the max allowed children')
             
         self._children.append(child)
         
@@ -232,7 +233,7 @@ class Compound(Attr):
             valid_size = self.count() == self._target_size
             
         if not valid_size:
-            pm.error('user_data module: {0} does not have the required number of children'.format(self.attr_type))
+            pm.error('udata module: {0} does not have the required number of children'.format(self.attr_type))
 
 
 
@@ -302,10 +303,10 @@ class BaseData(Attr):
     creating and editing records, as well as class.version management.
     
     Any object that has a block of BaseData attributes stored on it will also
-    contain a data block name that matches user_data._RECORDS_NAME. Records
-    are used for determing what BaseData sub-classes are being stored on a
-    given node. If a record for a given class is missing from the records
-    then the user_data module won't know that the data exists.
+    contain a data block name that matches udata._RECORDS_NAME. Records are
+    used for determing what version BaseData sub-classes are being stored on
+    a given node. If a record for a given class is missing from the records
+    then the udata module won't know that the data exists.
     """
     
     attributes = []
@@ -373,7 +374,7 @@ class BaseData(Attr):
     @classmethod     
     def _get_records(cls, node, force_add ):
         if not node:
-            pm.error('user_data Module : Can\'t get records. node is None')
+            pm.error('udata Module : Can\'t get records. node is None')
             
         has_records = pm.hasAttr(node, _RECORDS_NAME)
                 
@@ -462,7 +463,7 @@ class BaseData(Attr):
                 record_names.append( record.name )            
 
             class_name = cls.__name__
-            errorMessage = 'user_data Attribute Conflict :: Attribute Name(s) : {0} from class "{1}" conflicts with one of these existing blocks of data : {2}'
+            errorMessage = 'udata Attribute Conflict :: Attribute Name(s) : {0} from class "{1}" conflicts with one of these existing blocks of data : {2}'
             pm.error( errorMessage.format(conflicts, class_name, record_names) )
  
     @classmethod          
@@ -512,13 +513,13 @@ class BaseData(Attr):
         
     @classmethod
     def get_attributes(cls):
-        """MUST IMPLEMENT : A list of user_data.Attrs stored in this class.
+        """MUST IMPLEMENT : A list of udata.Attrs stored in this class.
         
         Sub-classes of BaseData must override this function and return
         the attributes they want to create and store in Maya. The function
         must also be declared as a class or static method.        
         """
-        pm.error( 'user_data Module: You\'re attempting to get attributes for class {0} that has no get_attributes() overridden'.format(cls.__name__) )       
+        pm.error( 'udata Module: You\'re attempting to get attributes for class {0} that has no get_attributes() overridden'.format(cls.__name__) )       
        
        
 ###----Update Methods----
@@ -528,7 +529,7 @@ class BaseData(Attr):
         """Determines if the update_version() should be called.
         
         Users can override this function if they wish to define their own
-        logic. By default the function returns user_data.AUTO_UPDATE, which
+        logic. By default the function returns udata.AUTO_UPDATE, which
         is False by default.
         
         Args:
@@ -540,7 +541,7 @@ class BaseData(Attr):
         """
         global AUTO_UPDATE
         if not AUTO_UPDATE and REPORT_WARNINGS:
-            pm.warning('cg3dguru.user_data : Skip updating old data on "{}" of type "{}" because AUTO_UPDATE is False. Consider overriding pre_update_version(). Repress this warning with user_data.REPORT_WARNINGS = False'
+            pm.warning('cg3dguru.udata : Skip updating old data on "{}" of type "{}" because AUTO_UPDATE is False. Consider overriding pre_update_version(). Repress this warning with udata.REPORT_WARNINGS = False'
                        .format(old_data.node(), cls.__name__))
         
         return AUTO_UPDATE
@@ -557,7 +558,7 @@ class BaseData(Attr):
         5. The data values are transferred back from the temp node to the original node.
         
         Failure of this process could occur during step #2. In this situation
-        user_data.VersionUpdateException is raised and the user will need to
+        udata.VersionUpdateException is raised and the user will need to
         determine their own logic for how to update/replace their existing
         data with the new class version.
         
@@ -634,7 +635,7 @@ class BaseData(Attr):
         
         The deault prefix is an empty string. The prefix is designed to limit
         the potential of an attribute name collision between mutliple
-        user_data blocks assigned to the same maya node. Users can return ''
+        udata blocks assigned to the same maya node. Users can return ''
         if they don't want a prefix added to their attribute names. Any valid
         prefix will automaticallly be separated by '_'
         
@@ -788,7 +789,7 @@ class BaseData(Attr):
         """Creates a new node in Maya that also contains the Class attributes.
         
         The default node type that's created is driven by
-        user_data._DEFAULT_NODE_TYPE, but users can override this based on
+        udata._DEFAULT_NODE_TYPE, but users can override this based on
         the input params.
         
         Args:
@@ -811,9 +812,9 @@ class BaseData(Attr):
 class Utils(object):
     """Easy module and maya scene inspection
     
-    The user_data.Utils class provides a number of functions
+    The udata.Utils class provides a number of functions
     to inspect not only the active Maya scene, but also an inspection
-    of Python classes that derive from user_data.BaseData. Users
+    of Python classes that derive from udata.BaseData. Users
     can verify that there won't be any attribute naming conflicts between
     the various class defintions, search for data that's being used
     in the active scene, as well as verify verioning.    
@@ -887,10 +888,10 @@ class Utils(object):
             for attr_name in conflicts:
                 classes = conflicts[attr_name]
                 if REPORT_WARNINGS:
-                    pm.warning( 'user_data.Utils :: Attr conflict. : "{0}" exists in classes: {1}'.format(attr_name, classes))
+                    pm.warning( 'udata.Utils :: Attr conflict. : "{0}" exists in classes: {1}'.format(attr_name, classes))
                 
             if error_on_conflict:
-                pm.error( 'user_data.Utils :: Found conflict between attribute names. See console for info.')
+                pm.error( 'udata.Utils :: Found conflict between attribute names. See console for info.')
                 
         return conflicts
     
