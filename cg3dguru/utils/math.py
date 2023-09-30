@@ -40,7 +40,7 @@ class Flip(enum.Enum):
     RIGHT = 2
     
     
-class Matrix_Utils(object):
+class MatrixUtils(object):
     """
     Allows users to get and set transforms in the generic terms of forward, up, and right (fur).
     Users define the mapping of a axis to a direction.
@@ -99,15 +99,15 @@ class Matrix_Utils(object):
     
     @property
     def forward(self) -> pm.datatypes.Vector:
-        return Matrix_Utils.get_axis_vector( self.get_matrix(), self._forward_axis)
+        return MatrixUtils.get_axis_vector( self.get_matrix(), self._forward_axis)
      
     @property
     def up(self) -> pm.datatypes.Vector:
-        return Matrix_Utils.get_axis_vector( self.get_matrix(), self._up_axis)
+        return MatrixUtils.get_axis_vector( self.get_matrix(), self._up_axis)
     
     @property
     def right(self) -> pm.datatypes.Vector:
-        return Matrix_Utils.get_axis_vector( self.get_matrix(), self._right_axis)    
+        return MatrixUtils.get_axis_vector( self.get_matrix(), self._right_axis)    
     
  
 ##--static methods----------------------------------------------------------------------------
@@ -195,17 +195,17 @@ class Matrix_Utils(object):
         Set's the transform_node's f, u, r to the input while ensuring proper right handedness.
         """
         
-        Matrix_Utils.ensure_right_handedness(z, y, x, flip)
+        MatrixUtils.ensure_right_handedness(z, y, x, flip)
         
         if ignore_scale:
             z.normalize()
             y.normalize()
             x.normalize()
         
-        Matrix_Utils.set_axis_vector(matrix, x, Axis.X)
-        Matrix_Utils.set_axis_vector(matrix, y, Axis.Y)
-        Matrix_Utils.set_axis_vector(matrix, z, Axis.Z)
-        Matrix_Utils.set_matrix_translation(matrix, position)
+        MatrixUtils.set_axis_vector(matrix, x, Axis.X)
+        MatrixUtils.set_axis_vector(matrix, y, Axis.Y)
+        MatrixUtils.set_axis_vector(matrix, z, Axis.Z)
+        MatrixUtils.set_matrix_translation(matrix, position)
         
         
     @staticmethod    
@@ -220,11 +220,11 @@ class Matrix_Utils(object):
             maya.OpenMaya.MGlobal.displayError( "Your three points are too in line with one another!" )
             return None
 
-        r_vec, u_vec = Matrix_Utils.get_orthogonal_vectors( f_vec, r_vec, v3_dir = u_dir )
+        r_vec, u_vec = MatrixUtils.get_orthogonal_vectors( f_vec, r_vec, v3_dir = u_dir )
         #self.ensure_right_handedness( r_vec, u_vec, f_vec )
 
         matrix = pm.datatypes.Matrix()
-        Matrix_Utils.set_matrix_vectors(matrix, f_vec, u_vec, r_vec, p1, Flip.RIGHT, True)
+        MatrixUtils.set_matrix_vectors(matrix, f_vec, u_vec, r_vec, p1, Flip.RIGHT, True)
 
         #pos = cgkit.cgtypes.vec4( p1 )
         #pos.w = 1
@@ -256,7 +256,6 @@ class Matrix_Utils(object):
         return pm.datatypes.Matrix( matrix_list)    
         
         
-        
     @staticmethod
     def set_world_matrix( obj_name, matrix, no_scale = False ):
         """
@@ -271,12 +270,10 @@ class Matrix_Utils(object):
         pm.general.xform( obj_name, matrix = matrix, worldSpace = True )
         
         
-        
     @staticmethod
     def get_third_axis(a1: Axis, a2: Axis):
         a3 = (a1 | a2) & ~Axis.REVERSE
         return Axis.ALL & ~a3
-    
     
     
     @staticmethod
@@ -302,7 +299,6 @@ class Matrix_Utils(object):
         return (v2, v3)
  
 ##--methods-----------------------------------------------------------------------------------
-                
                 
                 
     def set_forward_up_coordinates(self, forward: Axis,
@@ -341,7 +337,7 @@ class Matrix_Utils(object):
         Set's the transform_node's f, u, r to the input while ensuring proper right handedness.
         """
         
-        Matrix_Utils.ensure_right_handedness(forward, up, right, flip)
+        MatrixUtils.ensure_right_handedness(forward, up, right, flip)
         
         if ignore_scale:
             forward.normalize()
@@ -349,9 +345,9 @@ class Matrix_Utils(object):
             right.normalize()
         
         matrix = self.get_matrix()
-        Matrix_Utils.set_axis_vector(matrix, forward, self._forward_axis)
-        Matrix_Utils.set_axis_vector(matrix, up, self._up_axis)
-        Matrix_Utils.set_axis_vector(matrix, right, self._right_axis)
+        MatrixUtils.set_axis_vector(matrix, forward, self._forward_axis)
+        MatrixUtils.set_axis_vector(matrix, up, self._up_axis)
+        MatrixUtils.set_axis_vector(matrix, right, self._right_axis)
         
         self.transform_node.setMatrix(matrix, worldSpace = self.space == Space.WORLD)        
     
