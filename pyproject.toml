@@ -3,14 +3,15 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cg3d_guru_lib"
+name = "cg3d-maya-core"
 version = "0.5.0"
 authors = [
   { name="Nathaniel A", email="developer@3dcg.guru" },
 ]
-description = "A collection of various utility script for Maya"
+
+description = "A collection of Maya functions and classes that can easily be pulled into other projects/modules"
 readme = "README.md"
-requires-python = ">=3"
+requires-python = ">=3.4"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
@@ -21,4 +22,7 @@ dependencies = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/Nathanieljla/cg3d-guru-lib"
+"Homepage" = "https://github.com/Nathanieljla/cg3d-maya-core"
+
+[tool.setuptools.packages.find]
+where = ["src"]
