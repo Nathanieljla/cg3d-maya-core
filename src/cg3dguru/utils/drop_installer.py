@@ -983,6 +983,10 @@ class InstallerUi(QWidget):
         if self.module_manager.pre_install():
             self.connect(self.module_manager, SIGNAL('finished()'), self.done)
             self.module_manager.start()
+        else:
+            self.close_button.show()
+            self.animated_gif.hide()
+            self.message_label.setText(self.failed_message)
         
     
     def done(self):
