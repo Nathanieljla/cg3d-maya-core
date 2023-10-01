@@ -1034,9 +1034,10 @@ def main():
         
         manager = MyInstaller(MODULE_NAME, MODULE_VERSION, package_name = PACKAGE_NAME)
         
-        Resources.company_base64 = ''
-        logo_size = [64 / 64]
-        background_color = ''
+        
+        Resources.company_base64 = '''''' #must be surrounded by three '.  Uses Resources.print_file_string to generate a string from an iFXf00cV114ukwm9xUSVHtiM
+        logo_size = [64, 64]
+        background_color = '' #hex string
 
         global RESOURCES
         RESOURCES = Resources()
