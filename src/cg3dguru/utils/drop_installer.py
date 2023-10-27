@@ -6,12 +6,15 @@ https://github.com/Nathanieljla/cg3d-maya-core/blob/main/src/cg3dguru/utils/drop
 
 If you want to modify this script for your own purposes it's better
 to pull a copy from the source location.
+
+changes:
+v0.9.2 : post_install now receives bool on if main install was successful
 """
 
 __author__ = "Nathaniel Albright"
 __email__ = "developer@3dcg.guru"
 
-VERSION = (0, 9, 0)
+VERSION = (0, 9, 2)
 __version__ = '.'.join(map(str, VERSION))
 
 
@@ -703,11 +706,6 @@ class ModuleManager(QThread):
                 self.make_folder(self.site_packages_path)
         except OSError:
             return False
-
-        filename = os.path.join(self.install_root, (self.module_name + '.mod'))
-        self.read_module_definitions(filename)
-              
-        return self.update_module_definition(filename)
     
 
     def install(self):
@@ -724,17 +722,32 @@ class ModuleManager(QThread):
         return installed
     
     
-    def post_install(self):
+    def post_install(self, install_succeeded: bool):
         """Used after install() to do any clean-up
-
-        """  
+        
+        This function also updates/adds the .mod file.
+        Sub-classes should call this function when overriding.
+        
+        Returns:
+        --------
+        bool
+            True if all post install operations executed as expected
+        """
+        
         print('post install')
-        if self.install_succeeded:
+        if install_succeeded:
             if self.scripts_path not in sys.path:
                 sys.path.append(self.scripts_path)
                 print('Add scripts path [{}] to system paths'.format(self.scripts_path))
             else:
                 print('scripts path in system paths')
+                
+                filename = os.path.join(self.install_root, (self.module_name + '.mod'))
+                self.read_module_definitions(filename)
+                      
+                return self.update_module_definition(filename)
+            
+        return True
                 
                 
     def install_pymel(self):
@@ -979,6 +992,7 @@ class InstallerUi(QWidget):
         self.animated_gif.show()
         self.message_label.setText(self.installing_message)
         self.message_label.show()
+        self.repaint()
         
         if self.module_manager.pre_install():
             self.connect(self.module_manager, SIGNAL('finished()'), self.done)
@@ -997,7 +1011,7 @@ class InstallerUi(QWidget):
         else:
             self.message_label.setText(self.failed_message)
         
-        no_errors = self.module_manager.post_install()
+        no_errors = self.module_manager.post_install(self.module_manager.install_succeeded)
         if not no_errors:
             self.message_label.setText(self.post_error_messsage)
     
