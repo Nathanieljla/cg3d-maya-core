@@ -736,17 +736,17 @@ class ModuleManager(QThread):
         
         print('post install')
         if install_succeeded:
+            #make sure the scripts path has been added so we can start running code.
             if self.scripts_path not in sys.path:
                 sys.path.append(self.scripts_path)
                 print('Add scripts path [{}] to system paths'.format(self.scripts_path))
-            else:
-                print('scripts path in system paths')
-                
-                filename = os.path.join(self.install_root, (self.module_name + '.mod'))
-                self.read_module_definitions(filename)
-                      
-                return self.update_module_definition(filename)
-            
+
+            #make the mod file.                
+            filename = os.path.join(self.install_root, (self.module_name + '.mod'))
+            self.read_module_definitions(filename)
+                  
+            return self.update_module_definition(filename)
+        
         return True
                 
                 
