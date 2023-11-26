@@ -1,6 +1,6 @@
 import pymel.core
 import os
-import re
+import cg3dguru.utils
 
 #http://tech-artists.org/forum/showthread.php?4988-Problem-doing-an-FBX-export-with-PyMEL
 #http://download.autodesk.com/global/docs/maya2014/en_us/index.html?url=files/GUID-377B0ACE-CEC8-4D13-81E9-E8C9425A8B6E.htm,topicNumber=d30e145135
@@ -22,41 +22,7 @@ def get_save_filename(export_node=None):
         return None
 
 
-
-def strip_namespace(filename):
-    fbx = open(filename)
-    file_string = fbx.read()
-    fbx.close()
-    
-    results = re.finditer('(Model::[_:a-z0-9]*)', file_string, re.IGNORECASE)
-    segments = []
-    for i in results:
-        start_end = ([i.start(), i.end()])
-        segments.append(start_end)
-        
-    segments.reverse()
-    for idx, i in enumerate(segments):
-        model_name = file_string[i[0]:i[1]]
-        model_name = model_name.replace('Model::', '')
-        namespaces = model_name.split(':')
-        model_name = 'Model::{0}'.format(namespaces[-1])
-        
-        pre_file  = file_string[0:i[0]]
-        post_file = file_string[i[1]:]
-
-        file_string = pre_file + model_name + post_file
-        
-    #save_name = filename.replace('.fbx', '_edited.fbx')
-
-    new_file = open(filename, 'w')
-    new_file.write(file_string)
-    new_file.close()
-    
-    return None
-
-
-
-def set_export_options(export_type):
+def set_export_options(export_type, remove_namespaces=False):
     ##https://help.autodesk.com/view/MAYAUL/2022/ENU/index.html?guid=GUID-699CDF74-3D64-44B0-967E-7427DF800290
     start = int(pymel.core.animation.playbackOptions(query=True, animationStartTime=True))
     end   = int( pymel.core.animation.playbackOptions(query=True, animationEndTime = True))
@@ -70,7 +36,7 @@ def set_export_options(export_type):
     
     pymel.core.mel.FBXExportBakeComplexStart(v=start)
     pymel.core.mel.FBXExportBakeComplexEnd(v=end)
-    pymel.core.mel.FBXExportBakeComplexAnimation(v= bake_anims )
+    pymel.core.mel.FBXExportBakeComplexAnimation(v= bake_anims )    
     pymel.core.mel.FBXExportBakeResampleAnimation (v= True )
     pymel.core.mel.FBXExportSkins(v=export_rig )
     
@@ -82,23 +48,23 @@ def set_export_options(export_type):
     pymel.core.mel.FBXExportCameras(v=False)
     pymel.core.mel.FBXExportLights(v=False)
     
-    pymel.core.mel.FBXExportInAscii(v=True)
-    pymel.core.mel.FBXExportFileVersion(v='FBX201300')
+    pymel.core.mel.FBXExportInAscii(v=remove_namespaces)
+    #pymel.core.mel.FBXExportFileVersion(v='FBX201300')
     
     pymel.core.mel.FBXExportAnimationOnly(v=not export_rig)
     
 
 
-def export(export_type=EXPORT_ANIM_RIG, filename='', strip_namespace=False):
-    set_export_options(export_type)
+def export(export_type=EXPORT_ANIM_RIG, filename='', remove_namespaces=False):
+    set_export_options(export_type, remove_namespaces=remove_namespaces)
     
     if not filename:
         filename = get_save_filename()
         
     if filename:
         pymel.core.mel.FBXExport(s=True, f=filename)
-        if os.path.exists(filename) and strip_namespace:
-            strip_namespace(filename)  
+        if os.path.exists(filename) and remove_namespaces:
+            cg3dguru.utils.remove_namespaces(filename)  
     
 
 def export_anim(*args, **kwargs):
