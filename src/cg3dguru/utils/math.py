@@ -114,7 +114,7 @@ class MatrixUtils(object):
      
     @staticmethod
     def get_world_pos( obj_name ):
-        x_list = maya.cmds.xform( obj_name, query = True, matrix = True, worldSpace = True )
+        x_list = pm.xform( obj_name, query = True, matrix = True, worldSpace = True )
         return pm.datatypes.Vector( *x_list[12:15] )    
 
     @staticmethod
@@ -243,15 +243,12 @@ class MatrixUtils(object):
         """
 
         """
-        matrix_list = maya.cmds.xform( obj_name, query = True, matrix = True, worldSpace = True )
-        rotatePivot = maya.cmds.xform( obj_name, query = True, ws = True, rotatePivot = True )
+        matrix_list = pm.xform( obj_name, query = True, matrix = True, worldSpace = True )
+        rotatePivot = pm.xform( obj_name, query = True, ws = True, rotatePivot = True )
 
         matrix_list[ 12 ] = rotatePivot[ 0 ]
         matrix_list[ 13 ] = rotatePivot[ 1 ]
         matrix_list[ 14 ] = rotatePivot[ 2 ]
-
-        #matrix = cgkit.cgtypes.mat4( matrix_list )
-        #matrix = matrix.transpose( )
 
         return pm.datatypes.Matrix( matrix_list)    
         
@@ -261,13 +258,10 @@ class MatrixUtils(object):
         """
 
         """
-        #if no_scale:
-            #rot = matrix.getMat3( )
-            #rot, scale = rot.decompose( )
-            #matrix.setMat3( rot )
+        if no_scale:
+            matrix.scale = pm.datatypes.Vector.one
 
-        #xform_list = matrix.toList( )
-        pm.general.xform( obj_name, matrix = matrix, worldSpace = True )
+        pm.xform( obj_name, matrix = matrix, worldSpace = True )
         
         
     @staticmethod

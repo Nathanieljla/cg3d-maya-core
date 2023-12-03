@@ -72,5 +72,5 @@ def create_stretchy_spline():
     
     
 
-def Run():
+def run():
     create_stretchy_spline()
