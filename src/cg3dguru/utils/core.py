@@ -13,6 +13,8 @@ def remove_namespaces(filename):
     expression_str = "(?P<start>::)(?P<namespace>([ \d\w]*:)*)(?P<name>[ \d\w]*)"
     result = re.sub(expression_str, "\g<start>\g<name>", file_string)
         
-    new_file = open(file_string, 'w')
+    new_file = open(filename, 'w')
     new_file.write(result)
     new_file.close()
+
+
