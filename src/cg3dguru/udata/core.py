@@ -418,13 +418,15 @@ class BaseData(Attr):
         return found_record           
 
     
-    @classmethod
-    def get_record_by_name(cls, node, data_name):
-        """Sees if a record by the input data_name exists on the input node
+    #@classmethod
+    #def get_record_by_name(cls, node, data_name):
+        #"""Sees if a record by the input data_name exists on the input node
         
-        Returns the record if it exists, else None        
-        """
-        return cls._get_record_by_name( node, data_name )
+        #Returns the record if it exists, else None.
+        #WARNING: This skips any class update checks.  It's better to use
+        #class.get_data(node)
+        #"""
+        #return cls._get_record_by_name( node, data_name )
     
     
     @classmethod
@@ -922,7 +924,7 @@ class Utils(object):
         data_nodes = []
         for node in nodes:
             if data_class:
-                records = BaseData.get_record_by_name( node, data_class.get_name() )
+                records = data_class.get_data(node) #BaseData.get_record_by_name( node, data_class.get_name() )
             else:
                 records = BaseData.get_records(node)
                 
