@@ -1,0 +1,19 @@
+#!wing
+#!version=9.0
+##################################################################
+# Wing project file                                              #
+##################################################################
+[project attributes]
+proj.directory-list = [{'dirloc': loc('.'),
+                        'excludes': ['src'],
+                        'filter': '*',
+                        'include_hidden': False,
+                        'recursive': True,
+                        'watch_for_changes': True},
+                       {'dirloc': loc('../../maya/modules/cg3dmaya/scripts/cg3dguru'),
+                        'excludes': (),
+                        'filter': '*',
+                        'include_hidden': False,
+                        'recursive': True,
+                        'watch_for_changes': True}]
+proj.file-type = 'shared'
