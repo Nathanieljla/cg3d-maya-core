@@ -108,6 +108,13 @@ def set_character_source(character, source: SourceType|str):
     else:
         pm.error('invalid source type: {}'.format(source))
         
+
+    for menu_item in pm.optionMenuGrp(source_list, itemListLong=True, q=True):
+        menu_label = pm.menuItem(menu_item, label=True, q=True)
+        if menu_label.strip().lower() == source_name.strip().lower():
+            source_name = menu_label
+            break
+ 
     if character and source_list:
         current_source = pm.optionMenuGrp(source_list, query=True, value=True)
         if current_source != source_name:
