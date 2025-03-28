@@ -48,6 +48,7 @@ def fbx_ascii_to_binary(filename):
         pymel.core.mel.FBXResetExport()
         pymel.core.mel.FBXExportBakeComplexStart(v=start)
         pymel.core.mel.FBXExportBakeComplexEnd(v=end)
+        pymel.core.mel.FBXExportSkeletonDefinitions(v=True)
         pymel.core.mel.FBXExportBakeComplexAnimation(v=False)
         pymel.core.mel.FBXExportBakeResampleAnimation(v=True)
         pymel.core.mel.FBXExportSkins(v=True)
