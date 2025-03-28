@@ -63,14 +63,25 @@ try:
     import maya.cmds
     from maya import OpenMayaUI as omui
     
-    from PySide2.QtCore import *
-    from PySide2.QtWidgets import *
-    from PySide2.QtGui import *
-    from shiboken2 import wrapInstance
     MAYA_RUNNING = True
 except ImportError:
     MAYA_RUNNING = False
     
+    
+if MAYA_RUNNING:
+    try:
+        from PySide2.QtCore import * 
+        from PySide2.QtWidgets import *
+        from PySide2.QtUiTools import *
+        from PySide2 import __version__
+        from shiboken2 import wrapInstance
+    except:
+        from PySide6.QtCore import * 
+        from PySide6.QtWidgets import *
+        from PySide6.QtUiTools import *
+        from PySide6 import __version__
+        from shiboken6 import wrapInstance       
+
 
 RESOURCES = None
     
