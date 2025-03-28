@@ -57,7 +57,7 @@ def export(filename, export_type=EXPORT_ANIM_RIG, bake_animations=True, remove_n
     print('start:{0} end:{1}'.format(start, end))
     
     pymel.core.mel.FBXResetExport()
-    
+    pymel.core.mel.FBXExportSkeletonDefinitions(v=True)
     pymel.core.mel.FBXExportBakeComplexStart(v=start)
     pymel.core.mel.FBXExportBakeComplexEnd(v=end)
     pymel.core.mel.FBXExportBakeComplexAnimation(v= _bake_anims and bake_animations)    
