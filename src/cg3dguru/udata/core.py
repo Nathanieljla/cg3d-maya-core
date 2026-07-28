@@ -25,9 +25,11 @@ the child size is predetermined.
 __author__ = "Nathaniel Albright"
 __email__ = "developer@3dcg.guru"
 
-VERSION = (0, 9, 0)
+VERSION = (0, 10, 0)
 __version__ = '.'.join(map(str, VERSION))
 
+
+import inspect
 
 import pymel.core as pm
 
@@ -511,8 +513,36 @@ class BaseData(Attr):
     def _init_class_attributes(cls):
         if not cls.attributes:
             cls.attributes = cls.get_attributes()
-        
-        
+
+
+    @classmethod
+    def _copyable_attr_names(cls, source, target, attr_names):
+        """Only names that resolve on both nodes can be handed to copyAttr.
+
+        Attributes that are new in this class version won't exist on the old
+        data, and attributes dropped by this version won't exist on the new
+        data. Either way there's nothing to transfer.
+        """
+        return [name for name in attr_names
+                if pm.hasAttr(source, name) and pm.hasAttr(target, name)]
+
+
+    @classmethod
+    def _unlock_attrs(cls, node, attr_names):
+        """Unlocks the named attrs and returns the names that were locked"""
+        was_locked = []
+        for name in attr_names:
+            if not pm.hasAttr(node, name):
+                continue
+
+            attr = node.attr(name)
+            if attr.isLocked():
+                attr.unlock()
+                was_locked.append(name)
+
+        return was_locked
+
+
     @classmethod
     def get_attributes(cls):
         """MUST IMPLEMENT : A list of udata.Attrs stored in this class.
@@ -558,63 +588,126 @@ class BaseData(Attr):
         3. The current data is deleted off the original node
         4. The new data is added to the original node.
         5. The data values are transferred back from the temp node to the original node.
-        
+
+        Only attributes that exist in both the old and the new definition are
+        transferred. Attributes that are new to this version are left at the
+        default values defined by their Attr() flags, which sub-classes can
+        then adjust by overriding post_update_version().
+
         Failure of this process could occur during step #2. In this situation
         udata.VersionUpdateException is raised and the user will need to
         determine their own logic for how to update/replace their existing
         data with the new class version.
-        
+
         Args:
             old_data (pymel.general.Attr) : the data of the outdated version.
             old_version_number (tuple) : The Max, min, patch value of the old data.
-        
+
         Returns:
             Bool : True if the update was successful else False.
         """
-        
-        
-        #Copy the attribute values to a temporary node
-        #cls._node = old_data.node()
-        
-        temp_node, data = cls.create_node(name = 'TRASH', ss=True)
-        name_list = cls.get_attribute_names()
-        try:
-            pm.copyAttr(cls._node, temp_node, at=name_list, ic=True, oc=True, values=True)
-        except:
-            #delete the tempNode
-            pm.delete(temp_node)
-            
-            message = 'Please impliment custom update logic for class: {0}  oldVersion: {1}  newVersion: {2}'.format( cls.get_name(), old_version_number, cls.get_class_version())
-            raise VersionUpdateException(message)
-        
-        #delete the attributes off the current node
-        pm.deleteAttr( cls._node, at = cls.get_name() )
-        
-        #rebuild with the latest definition
-        cls._create_data()
 
-        #transfer attributes back to original node
-        pm.copyAttr(temp_node, cls._node, at = name_list, ic = True, oc = True, values = True)  
-        
-        #delete the tempNode
-        pm.delete(temp_node)
-        
+        node      = cls._node
+        data_name = cls.get_name()
+
+        #adding and deleting attributes on a referenced node isn't something
+        #we can reliably round-trip, so don't try.
+        if pm.referenceQuery(node, isNodeReferenced=True):
+            if REPORT_WARNINGS:
+                pm.warning('cg3dguru.udata : Can\'t update "{0}" on referenced node "{1}".'
+                           .format(data_name, node))
+            return False
+
+        #get_attribute_names() returns unprefixed names while _add_attr()
+        #writes prefixed ones, so with a prefix we can't match the old attrs
+        #to the new ones by name. Refuse instead of silently transfering
+        #nothing.
+        if cls.get_prefix():
+            if REPORT_WARNINGS:
+                pm.warning('cg3dguru.udata : "{0}" uses an attribute prefix. Please override update_version() with custom logic.'
+                           .format(data_name))
+            return False
+
+        #Copy the attribute values to a temporary node
+        temp_node, data = cls.create_node(name = 'TRASH', ss=True)
+
+        try:
+            name_list = cls.get_attribute_names()
+            copy_list = cls._copyable_attr_names(node, temp_node, name_list)
+
+            #copyAttr can't write into a locked plug and the temp node just
+            #ran post_create(), which may well have locked some of them.
+            cls._unlock_attrs(temp_node, copy_list)
+
+            try:
+                pm.copyAttr(node, temp_node, at=copy_list, ic=True, oc=True, values=True)
+            except:
+                message = 'Please impliment custom update logic for class: {0}  oldVersion: {1}  newVersion: {2}'.format( data_name, old_version_number, cls.get_class_version())
+                raise VersionUpdateException(message)
+
+            #a locked child stops the parent compound from being deleted, so
+            #clear the locks first and remember them for later.
+            was_locked = cls._unlock_attrs(node, name_list + [data_name])
+
+            #delete the attributes off the current node
+            pm.deleteAttr( node, at = data_name )
+
+            #rebuild with the latest definition
+            cls._create_data()
+
+            #transfer attributes back to original node
+            pm.copyAttr(temp_node, node, at = copy_list, ic = True, oc = True, values = True)
+
+            #restore whatever locks the old version was using. We deliberately
+            #don't re-run post_create(), because post_create() is allowed to
+            #generate one-time data (ids, network connections) that must not
+            #be regenerated during an update.
+            for name in was_locked:
+                if pm.hasAttr(node, name):
+                    node.attr(name).lock()
+
+        finally:
+            #delete the tempNode
+            if temp_node is not None and temp_node.exists():
+                pm.delete(temp_node)
+
         return True
 
-    @classmethod    
-    def post_update_version(cls, data, update_successful):
+    @classmethod
+    def post_update_version(cls, data, update_successful, old_version_number = None):
         """Called after update_version()
-        
+
         The default implimentation does nothing. Users can override
         this function if they want to do any post processing after
-        the update_function has been run.
-        
+        the update_function has been run. This is also where a sub-class
+        initializes attributes that are new to this version, as
+        update_version() can only transfer values that existed in both the
+        old and the new definition.
+
         args:
             data (pymel.general.Attr) : The newly updated data if successful
             else the old data.
             update_successful (bool) : Was the update successful.
-        """        
+            old_version_number (tuple, optional) : The version of the data
+            that was replaced. This argument was added in udata 0.10.0 and
+            is only passed to overrides that declare it.
+        """
         pass
+
+
+    @classmethod
+    def _call_post_update_version(cls, data, update_successful, old_version_number):
+        """Calls post_update_version() without breaking older overrides.
+
+        old_version_number was added to post_update_version() in udata
+        0.10.0. Sub-classes written against the older two argument signature
+        are still supported and simply don't recieve it.
+        """
+        params = inspect.signature(cls.post_update_version).parameters
+        if 'old_version_number' in params:
+            cls.post_update_version( data, update_successful, old_version_number )
+        else:
+            cls.post_update_version( data, update_successful )
     
     
 ###----Data Methods----
@@ -708,50 +801,55 @@ class BaseData(Attr):
         #need to make sure we reset the data as we leave the scope. reseting
         #happens on exit.
         cls._data_stack.append((cls._records, cls._node))
-        
-        cls._records = None
-        cls._node    = node
-        
-        record = cls.get_record(node)
-        
-        if not record and force_add:
-            #lets make sure the records data exists
-            cls._records = cls._get_records(node, force_add = True)
-            
-        #If found make sure the data block doesn't need updating.
-        if record:
-            data_name = cls.get_name() 
-            record_version = record.version
-            current_version = cls.get_class_version()
-            
-            #Attempt to updat the version
-            if record_version < current_version:
-                old_data = cls._node.attr(data_name)
-                
-                if cls.pre_update_version(old_data, record_version):
-                    updated = cls.update_version(old_data, record_version)
-                    if updated:
-                        record.version = current_version
-                                
-                    data = cls._node.attr(data_name)
-                    cls.post_update_version( data, updated )
 
-            
-            data = cls._node.attr(data_name)
-                    
-        #else, add the data to the node           
-        elif force_add:
-            cls._find_attr_conflicts()
-            data = cls._create_data()
-            cls._add_data_to_records()
-            cls.post_create( data )
-            
-        else:
-            data = None
+        #The stack must be popped no matter how we leave this scope. A leaked
+        #entry would desync cls._node/cls._records for every BaseData class
+        #for the rest of the session.
+        try:
+            cls._records = None
+            cls._node    = node
 
-        cls._records, cls._node = cls._data_stack.pop(-1)
+            record = cls.get_record(node)
 
-        return data      
+            if not record and force_add:
+                #lets make sure the records data exists
+                cls._records = cls._get_records(node, force_add = True)
+
+            #If found make sure the data block doesn't need updating.
+            if record:
+                data_name = cls.get_name()
+                record_version = record.version
+                current_version = cls.get_class_version()
+
+                #Attempt to updat the version
+                if record_version < current_version:
+                    old_data = cls._node.attr(data_name)
+
+                    if cls.pre_update_version(old_data, record_version):
+                        updated = cls.update_version(old_data, record_version)
+                        if updated:
+                            record.version = current_version
+
+                        data = cls._node.attr(data_name)
+                        cls._call_post_update_version( data, updated, record_version )
+
+
+                data = cls._node.attr(data_name)
+
+            #else, add the data to the node
+            elif force_add:
+                cls._find_attr_conflicts()
+                data = cls._create_data()
+                cls._add_data_to_records()
+                cls.post_create( data )
+
+            else:
+                data = None
+
+        finally:
+            cls._records, cls._node = cls._data_stack.pop(-1)
+
+        return data
     
     @classmethod  
     def add_data(cls, node):
