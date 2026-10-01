@@ -1,25 +1,26 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "cg3d-maya-core"
-version = "0.8.0"
+version = "0.9.0"
 authors = [
   { name="Nathaniel A", email="developer@3dcg.guru" },
 ]
 
-description = "A collection of Maya functions and classes that can easily be pulled into other projects/modules"
+description = "Maya utilities with a PyMEL-free v2 API and an optional legacy package"
 readme = "README.md"
-requires-python = ">=3.4"
+requires-python = ">=3.7"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
 ]
 
-dependencies = [
-    "pymel>=1.3",
-]
+dependencies = []
+
+[project.optional-dependencies]
+legacy = ["pymel>=1.3"]
 
 [project.urls]
 "Homepage" = "https://github.com/Nathanieljla/cg3d-maya-core"
