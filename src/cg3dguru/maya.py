@@ -31,52 +31,98 @@ def plug_name(plug: str | "Attribute") -> str:
 
 
 class Node:
-    """A lightweight handle around a Maya node name."""
+    """A stable handle to a Maya dependency node.
 
-    __slots__ = ("_name",)
+    Maya node names are mutable and DAG short names are not necessarily
+    unique.  The handle therefore stores the node's Maya UUID and resolves
+    its current name only when a command needs it.  Renaming or
+    reparenting a node does not invalidate the handle, and two DAG nodes with
+    the same short name remain distinct.
+    """
+
+    __slots__ = ("_uuid",)
 
     def __init__(self, name: str | "Node"):
-        self._name = node_name(name) if isinstance(name, Node) else str(name)
+        if isinstance(name, Node):
+            self._uuid = name._uuid
+            return
+
+        if not isinstance(name, str):
+            raise TypeError(
+                "Expected a Maya node name or Node, got {!r}".format(name)
+            )
+
+        matches = cmds.ls(name, long=True) or []
+        if not matches:
+            raise ValueError("No Maya node matches {!r}".format(name))
+        if len(matches) > 1:
+            raise ValueError(
+                "More than one Maya node matches {!r}: {}".format(name, matches)
+            )
+
+        uuids = cmds.ls(matches[0], uuid=True) or []
+        if len(uuids) != 1:
+            raise RuntimeError(
+                "Could not resolve a unique UUID for {!r}".format(matches[0])
+            )
+        self._uuid = uuids[0]
 
     def __str__(self) -> str:
-        return self._name
+        return self.name()
 
     def __repr__(self) -> str:
-        return "Node({!r})".format(self._name)
+        try:
+            name = self.name()
+        except RuntimeError:
+            name = "<deleted:{}>".format(self._uuid)
+        return "Node({!r})".format(name)
 
     def __hash__(self) -> int:
-        return hash(self._name)
+        return hash(self._uuid)
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, Node):
-            return self._name == other._name
-        if isinstance(other, str):
-            return self._name == other
+            return self._uuid == other._uuid
         return NotImplemented
 
     def __lt__(self, other: object) -> bool:
-        if isinstance(other, (Node, str)):
-            return self._name < node_name(other)
+        if isinstance(other, Node):
+            return self.name() < other.name()
         return NotImplemented
 
     def name(self) -> str:
-        return self._name
+        matches = cmds.ls(self._uuid, long=True) or []
+        if not matches:
+            raise RuntimeError(
+                "Maya node no longer exists (UUID {})".format(self._uuid)
+            )
+        if len(matches) > 1:
+            raise RuntimeError(
+                "Maya UUID {} resolves to multiple nodes: {}".format(
+                    self._uuid, matches
+                )
+            )
+        return matches[0]
 
     def exists(self) -> bool:
-        return bool(cmds.objExists(self._name))
+        return bool(cmds.ls(self._uuid))
 
     def type(self) -> str:
-        return cmds.nodeType(self._name)
+        return cmds.nodeType(self.name())
 
     def attr(self, name: str) -> "Attribute":
         return Attribute(self, name)
 
     def getShapes(self, **kwargs: Any) -> list["Node"]:
         kwargs.setdefault("shapes", True)
-        return [Node(name) for name in (cmds.listRelatives(self._name, **kwargs) or [])]
+        kwargs.setdefault("fullPath", True)
+        return [
+            Node(name)
+            for name in (cmds.listRelatives(self.name(), **kwargs) or [])
+        ]
 
     def getParent(self) -> "Node | None":
-        parents = cmds.listRelatives(self._name, parent=True, fullPath=True) or []
+        parents = cmds.listRelatives(self.name(), parent=True, fullPath=True) or []
         return Node(parents[0]) if parents else None
 
     def __getattr__(self, name: str) -> "Attribute":
@@ -111,13 +157,14 @@ class Attribute:
         return "Attribute({!r})".format(self.name())
 
     def __hash__(self) -> int:
-        return hash(self.name())
+        return hash((self._node, self._attribute))
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, Attribute):
-            return self.name() == other.name()
-        if isinstance(other, str):
-            return self.name() == other
+            return (
+                self._node == other._node
+                and self._attribute == other._attribute
+            )
         return NotImplemented
 
     def name(self) -> str:
@@ -230,7 +277,8 @@ def nodes(values: Iterable[str | Node] | None) -> list[Node]:
 
 
 def ls(*args: Any, **kwargs: Any) -> list[Node]:
-    """Call ``cmds.ls`` and return lightweight node handles."""
+    """Call ``cmds.ls`` and return identity-backed node handles."""
+    kwargs.setdefault("long", True)
     return nodes(cmds.ls(*args, **kwargs))
 
 

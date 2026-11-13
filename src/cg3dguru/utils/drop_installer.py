@@ -2,7 +2,7 @@
 Drag-n-drop this into a maya viewport to install packages
 
 This is copied from:
-https://github.com/Nathanieljla/cg3d-maya-core/blob/main/src/cg3dguru_v2/utils/drop_installer.py
+https://github.com/Nathanieljla/cg3d-maya-core/blob/main/src/cg3dguru/utils/drop_installer.py
 
 If you want to modify this script for your own purposes it's better
 to pull a copy from the source location.

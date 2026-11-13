@@ -66,7 +66,7 @@ REPORT_WARNINGS = True
 
 
 def _config(name):
-    """Read public settings from ``cg3dguru_v2.udata`` when overridden."""
+    """Read public settings from ``cg3dguru.udata`` when overridden."""
     package = sys.modules.get(__package__)
     return getattr(package, name, globals()[name]) if package else globals()[name]
 
@@ -611,7 +611,7 @@ class BaseData(Attr):
         """
         auto_update = _config('AUTO_UPDATE')
         if not auto_update and _config('REPORT_WARNINGS'):
-            cmds.warning('cg3dguru_v2.udata : Skip updating old data on "{}" of type "{}" because AUTO_UPDATE is False. Consider overriding pre_update_version(). Repress this warning with udata.REPORT_WARNINGS = False'
+            cmds.warning('cg3dguru.udata : Skip updating old data on "{}" of type "{}" because AUTO_UPDATE is False. Consider overriding pre_update_version(). Repress this warning with udata.REPORT_WARNINGS = False'
                        .format(old_data.node(), cls.__name__))
         
         return auto_update
@@ -652,7 +652,7 @@ class BaseData(Attr):
         #we can reliably round-trip, so don't try.
         if cmds.referenceQuery(node_name(node), isNodeReferenced=True):
             if _config('REPORT_WARNINGS'):
-                cmds.warning('cg3dguru_v2.udata : Can\'t update "{0}" on referenced node "{1}".'
+                cmds.warning('cg3dguru.udata : Can\'t update "{0}" on referenced node "{1}".'
                            .format(data_name, node))
             return False
 
@@ -662,7 +662,7 @@ class BaseData(Attr):
         #nothing.
         if cls.get_prefix():
             if _config('REPORT_WARNINGS'):
-                cmds.warning('cg3dguru_v2.udata : "{0}" uses an attribute prefix. Please override update_version() with custom logic.'
+                cmds.warning('cg3dguru.udata : "{0}" uses an attribute prefix. Please override update_version() with custom logic.'
                            .format(data_name))
             return False
 

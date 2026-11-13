@@ -1,9 +1,9 @@
 import os
 import enum
-import cg3dguru_v2.ui as ui
+import cg3dguru.ui as ui
 from maya import cmds
 from maya.api import OpenMaya as om
-import cg3dguru_v2.utils.modeling as mu
+import cg3dguru.utils.modeling as mu
 
 
 class Finger(enum.Enum):

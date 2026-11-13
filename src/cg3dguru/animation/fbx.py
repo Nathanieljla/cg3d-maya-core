@@ -7,7 +7,7 @@ import os
 
 from maya import cmds, mel
 
-import cg3dguru_v2.utils
+import cg3dguru.utils
 
 
 _EXPORT_NODES = None
@@ -72,7 +72,7 @@ def export(filename, export_type=EXPORT_ANIM_RIG, bake_animations=True, remove_n
     mel.eval("FBXExport -s -f {};".format(json.dumps(filename)))
 
     if os.path.exists(filename) and remove_namespaces:
-        cg3dguru_v2.utils.remove_namespaces(filename)
+        cg3dguru.utils.remove_namespaces(filename)
 
 
 def export_anim(filename, *args, **kwargs):

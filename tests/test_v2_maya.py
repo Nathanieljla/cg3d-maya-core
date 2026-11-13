@@ -6,11 +6,11 @@ import maya.standalone
 from maya import cmds
 from maya.api import OpenMaya as om
 
-from cg3dguru_v2 import udata
-from cg3dguru_v2.maya import Attribute, Node
-from cg3dguru_v2.rigging.stretchy_spline import create_stretchy_spline
-from cg3dguru_v2.utils.math import MatrixUtils
-from cg3dguru_v2.utils.modeling import plot_percent_on_curve
+from cg3dguru import udata
+from cg3dguru.maya import Attribute, Node
+from cg3dguru.rigging.stretchy_spline import create_stretchy_spline
+from cg3dguru.utils.math import MatrixUtils
+from cg3dguru.utils.modeling import plot_percent_on_curve
 
 
 class MayaV2IntegrationTests(unittest.TestCase):
@@ -102,6 +102,64 @@ class MayaV2IntegrationTests(unittest.TestCase):
         self.assertTrue(data.label.isLocked())
         self.assertTrue(data.enabled.get())
         self.assertEqual(VersionedData.get_record(node).version, (0, 1, 0))
+
+    def test_node_handles_survive_duplicate_names_renames_and_reparenting(self):
+        first_parent = cmds.createNode("transform", name="firstParent")
+        second_parent = cmds.createNode("transform", name="secondParent")
+        first = Node(
+            cmds.createNode("transform", name="duplicate", parent=first_parent)
+        )
+        second = Node(
+            cmds.createNode("transform", name="duplicate", parent=second_parent)
+        )
+
+        self.assertNotEqual(first, second)
+        self.assertEqual(first.name(), "|firstParent|duplicate")
+        self.assertEqual(second.name(), "|secondParent|duplicate")
+        self.assertEqual(Node(first.name()), first)
+        with self.assertRaises(ValueError):
+            Node("duplicate")
+
+        original_hash = hash(first)
+        tracked = {first}
+        cmds.rename(first.name(), "renamed")
+        self.assertEqual(first.name(), "|firstParent|renamed")
+        self.assertEqual(hash(first), original_hash)
+        self.assertIn(first, tracked)
+
+        cmds.parent(first.name(), second_parent)
+        self.assertEqual(first.name(), "|secondParent|renamed")
+        self.assertEqual(first.getParent(), Node("|secondParent"))
+
+        # Reproduce the proxy-rig collision: the output container and a
+        # cloned source joint can legitimately share a short name.
+        proxy_root = Node(cmds.createNode("transform", name="proxyRoot"))
+        skeleton_root = Node(
+            cmds.createNode(
+                "transform", name="skeletonRoot", parent=proxy_root.name()
+            )
+        )
+        cloned_root = Node(
+            cmds.createNode(
+                "joint", name="proxyRoot", parent=skeleton_root.name()
+            )
+        )
+        self.assertEqual(proxy_root.name(), "|proxyRoot")
+        self.assertEqual(
+            cloned_root.name(), "|proxyRoot|skeletonRoot|proxyRoot"
+        )
+        self.assertEqual(proxy_root.getParent(), None)
+        self.assertEqual(skeleton_root.getParent(), proxy_root)
+
+        data_node = Node(cmds.createNode("network", name="identityData"))
+        cmds.addAttr(data_node.name(), longName="source", attributeType="message")
+        proxy_root.message.connect(data_node.source)
+        self.assertEqual(data_node.source.inputs(), [proxy_root])
+
+        cmds.delete(first.name())
+        self.assertFalse(first.exists())
+        with self.assertRaises(RuntimeError):
+            first.name()
 
     def test_matrix_and_curve_helpers(self):
         transform = cmds.createNode("transform", name="matrixTest")
