@@ -57,11 +57,45 @@ class MayaV2IntegrationTests(unittest.TestCase):
         self.assertEqual(data.indices.get(), [2, 4, 8])
         self.assertEqual(data.color.get()[0], (0.25, 0.5, 0.75))
         self.assertEqual(data.link.inputs(), [source])
+        self.assertEqual(data.attr("label"), data.label)
+        self.assertEqual(data.attr("label").get(), "hello")
         self.assertEqual(DemoData.get_data(str(node)).label.get(), "hello")
         self.assertEqual(udata.Utils.get_nodes_with_data([str(node)], DemoData), [node])
 
         DemoData.delete_data(node)
         self.assertIsNone(DemoData.get_data(node))
+
+    def test_udata_supports_more_than_ten_compound_children(self):
+        class LargeData(udata.BaseData):
+            @staticmethod
+            def get_attributes():
+                attributes = [
+                    udata.create_attr("link{}".format(index), "message")
+                    for index in range(4)
+                ]
+                attributes.extend(
+                    udata.create_attr("enabled{}".format(index), "bool")
+                    for index in range(2)
+                )
+                attributes.extend(
+                    udata.create_attr(
+                        "axis{}".format(index), "enum",
+                        enumName="X:Y:Z", defaultValue=index % 3,
+                    )
+                    for index in range(8)
+                )
+                return attributes
+
+        node, data = LargeData.create_node(name="largeData")
+
+        children = cmds.attributeQuery(
+            "LargeData", node=str(node), listChildren=True
+        )
+        self.assertEqual(len(children), 14)
+        self.assertEqual(children[-1], "axis7")
+        self.assertEqual(data.axis7.get(), 1)
+        data.axis7.set(2)
+        self.assertEqual(LargeData.get_data(node).axis7.get(), 2)
 
     def test_udata_schema_update_preserves_values_and_locks(self):
         class VersionedData(udata.BaseData):
@@ -116,6 +150,8 @@ class MayaV2IntegrationTests(unittest.TestCase):
         self.assertNotEqual(first, second)
         self.assertEqual(first.name(), "|firstParent|duplicate")
         self.assertEqual(second.name(), "|secondParent|duplicate")
+        self.assertEqual(first.short_name(), "duplicate")
+        self.assertEqual(second.short_name(), "duplicate")
         self.assertEqual(Node(first.name()), first)
         with self.assertRaises(ValueError):
             Node("duplicate")

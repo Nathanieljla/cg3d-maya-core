@@ -33,6 +33,7 @@ import inspect
 import sys
 
 from maya import cmds
+from maya.api import OpenMaya as om
 
 from ..maya import Attribute, Node, as_node, create_node, has_attr, ls, node_name, plug_name
 
@@ -73,6 +74,112 @@ def _config(name):
 class VersionUpdateException(Exception):
     """Thrown when BaseData.update_version() errors"""
     pass
+
+
+def _flag(flags, *names, default=None):
+    for name in names:
+        if name in flags:
+            return flags[name]
+    return default
+
+
+def _apply_api_flags(attribute_fn, flags):
+    """Apply the addAttr flags needed by API-created uData attributes."""
+    properties = (
+        (("keyable", "k"), "keyable"),
+        (("hidden", "h"), "hidden"),
+        (("readable", "r"), "readable"),
+        (("writable", "w"), "writable"),
+        (("storable", "s"), "storable"),
+        (("cachedInternally", "ci"), "cached"),
+        (("multi", "m"), "array"),
+        (("indexMatters", "im"), "indexMatters"),
+    )
+    for aliases, property_name in properties:
+        value = _flag(flags, *aliases)
+        if value is not None:
+            setattr(attribute_fn, property_name, bool(value))
+
+    channel_box = _flag(flags, "channelBox", "cb")
+    if channel_box is not None:
+        attribute_fn.channelBox = bool(channel_box)
+
+    nice_name = _flag(flags, "niceName", "nn")
+    if nice_name is not None:
+        attribute_fn.setNiceNameOverride(str(nice_name))
+
+
+def _enum_fields(enum_names):
+    """Yield ``(label, value)`` pairs using Maya's enumName syntax."""
+    next_value = 0
+    for field in str(enum_names).split(":"):
+        if "=" in field:
+            label, value = field.rsplit("=", 1)
+            next_value = int(value)
+        else:
+            label = field
+        yield label, next_value
+        next_value += 1
+
+
+def _create_api_child(attr, long_name):
+    """Create an unattached API attribute for a large compound block.
+
+    Maya's ``addAttr`` command loses name-based access to a node while an
+    incomplete compound has more than ten children. The dependency-node API
+    has no such schema limit, but all children must be built before the
+    compound is attached to the node.
+    """
+    default = _flag(attr._flags, "defaultValue", "dv")
+
+    if attr.attr_type == "message":
+        attribute_fn = om.MFnMessageAttribute()
+        attribute_object = attribute_fn.create(long_name, long_name)
+    elif attr.attr_type == "enum":
+        attribute_fn = om.MFnEnumAttribute()
+        attribute_object = attribute_fn.create(
+            long_name, long_name, int(default or 0)
+        )
+        enum_names = _flag(attr._flags, "enumName", "en", default="")
+        for label, value in _enum_fields(enum_names):
+            attribute_fn.addField(label, value)
+    else:
+        numeric_types = {
+            "bool": om.MFnNumericData.kBoolean,
+            "byte": om.MFnNumericData.kByte,
+            "char": om.MFnNumericData.kChar,
+            "short": om.MFnNumericData.kShort,
+            "long": om.MFnNumericData.kInt,
+            "float": om.MFnNumericData.kFloat,
+            "double": om.MFnNumericData.kDouble,
+        }
+        if attr.attr_type not in numeric_types:
+            raise TypeError(
+                "uData compounds with more than ten children currently "
+                "require direct message, enum, or numeric children; {!r} "
+                "uses {!r}.".format(long_name, attr.attr_type)
+            )
+        attribute_fn = om.MFnNumericAttribute()
+        if default is None:
+            default = False if attr.attr_type == "bool" else 0
+        attribute_object = attribute_fn.create(
+            long_name, long_name, numeric_types[attr.attr_type], default
+        )
+        minimum = _flag(attr._flags, "minValue", "min")
+        maximum = _flag(attr._flags, "maxValue", "max")
+        soft_minimum = _flag(attr._flags, "softMinValue", "smn")
+        soft_maximum = _flag(attr._flags, "softMaxValue", "smx")
+        if minimum is not None:
+            attribute_fn.setMin(minimum)
+        if maximum is not None:
+            attribute_fn.setMax(maximum)
+        if soft_minimum is not None:
+            attribute_fn.setSoftMin(soft_minimum)
+        if soft_maximum is not None:
+            attribute_fn.setSoftMax(soft_maximum)
+
+    _apply_api_flags(attribute_fn, attr._flags)
+    return attribute_object
 
 
 class Attr(object):
@@ -795,18 +902,52 @@ class BaseData(Attr):
         long_name = cls.get_name()
         
         flags = cls.get_default_flags()
-        cls._clear_invalid_flags(flags)        
-        
-        cmds.addAttr(node_name(cls._node), ln=long_name, at='compound', nc=len(attrs), **flags)
+        cls._clear_invalid_flags(flags)
+
+        if len(attrs) > 10:
+            cls._create_large_compound(long_name, attrs, flags)
+        else:
+            cmds.addAttr(
+                node_name(cls._node), ln=long_name, at='compound',
+                nc=len(attrs), **flags
+            )
 
         prefix = cls.get_prefix()
         if prefix:
             prefix += '_'
 
-        for attr in attrs:
-            cls._add_attr(attr, prefix, long_name)       
+        if len(attrs) <= 10:
+            for attr in attrs:
+                cls._add_attr(attr, prefix, long_name)
          
         return cls._node.attr(long_name)
+
+    @classmethod
+    def _create_large_compound(cls, long_name, attrs, flags):
+        """Create an oversized direct-child compound atomically via Maya API."""
+        selection = om.MSelectionList()
+        selection.add(node_name(cls._node))
+        node_object = selection.getDependNode(0)
+
+        compound_fn = om.MFnCompoundAttribute()
+        compound_object = compound_fn.create(long_name, long_name)
+        _apply_api_flags(compound_fn, flags)
+
+        prefix = cls.get_prefix()
+        prefix = prefix + '_' if prefix else ''
+        for attr in attrs:
+            if isinstance(attr, Compound):
+                raise TypeError(
+                    "uData compounds with more than ten direct children do "
+                    "not yet support nested Compound definitions."
+                )
+            compound_fn.addChild(
+                _create_api_child(attr, prefix + attr.name)
+            )
+
+        modifier = om.MDGModifier()
+        modifier.addAttribute(node_object, compound_object)
+        modifier.doIt()
         
     @classmethod   
     def post_create(cls, data):

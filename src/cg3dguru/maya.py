@@ -104,6 +104,10 @@ class Node:
             )
         return matches[0]
 
+    def short_name(self) -> str:
+        """Return the node's leaf name without sacrificing handle identity."""
+        return self.name().rsplit("|", 1)[-1]
+
     def exists(self) -> bool:
         return bool(cmds.ls(self._uuid))
 
@@ -237,6 +241,14 @@ class Attribute:
 
     def disconnect(self, destination: str | "Attribute") -> None:
         cmds.disconnectAttr(self.name(), plug_name(destination))
+
+    def attr(self, name: str) -> "Attribute":
+        """Return another plug on this attribute's dependency node.
+
+        PyMEL compound attributes exposed this convenience, and the uData
+        API historically used it to address children by a dynamic name.
+        """
+        return self._node.attr(name)
 
     def __getitem__(self, index: int) -> "Attribute":
         return Attribute(self._node, "{}[{}]".format(self._attribute, index))
