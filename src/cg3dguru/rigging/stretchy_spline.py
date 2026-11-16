@@ -1,76 +1,64 @@
+"""Create a stretch network for selected spline IK handles."""
 
-import pymel.core as pm
-#iter = 10
+from maya import cmds
+
 
 def create_stretchy_spline():
-    #make sure we have an ik handle in our selection
-    selection = pm.general.ls(sl = True, type = 'ikHandle' )
-    
-    dm = pm.createNode('decomposeMatrix')
-    npc = pm.createNode('nearestPointOnCurve')
-    dm.outputTranslate >> npc.inPosition
-    
-    for handle in selection:
-        inputCurve = pm.listConnections(handle.inCurve)
-        if not inputCurve:
-            continue
-        
-        inputCurve = inputCurve[0]
-            
-        #find the start and end joint
-        startJoint = handle.getStartJoint()
-        endEffector = handle.getEndEffector()
+    selection = cmds.ls(selection=True, type="ikHandle") or []
 
-        endJoint = pm.listConnections(endEffector.tx)
-        if endJoint:
-            endJoint = endJoint[0]
-        else:
-            continue
+    decompose = cmds.createNode("decomposeMatrix")
+    nearest = cmds.createNode("nearestPointOnCurve")
+    cmds.connectAttr(decompose + ".outputTranslate", nearest + ".inPosition")
 
-        #build the network               
-        inputCurve.worldSpace[0] >> npc.inputCurve
-        currentJoint = endJoint          
-        lastDistanceNode = None
-        #count = 0
-        
-        while currentJoint != startJoint:
-            currentJoint = currentJoint.getParent()
-            #count += 0
-            #if count > iter:
-                #break
-                
-            #print(currentJoint)
+    try:
+        for handle in selection:
+            curves = cmds.listConnections(handle + ".inCurve", source=True, destination=False) or []
+            if not curves:
+                continue
+            curve = curves[0]
 
-            currentJoint.worldMatrix[0] >> dm.inputMatrix
-            poc = pm.createNode('pointOnCurveInfo')
-            inputCurve.worldSpace[0] >> poc.inputCurve
-            
-            #store the default parameter value for the joint
-            #a quick connect then disconnect gets us what we need.
-            npc.parameter >> poc.parameter
-            npc.parameter // poc.parameter
-            
-            db = pm.createNode('distanceBetween')
-            poc.position >> db.point1
-            if lastDistanceNode:
-                poc.position >> lastDistanceNode.point2
-                divide = pm.createNode('multiplyDivide')
+            start_joint = cmds.ls(
+                cmds.ikHandle(handle, query=True, startJoint=True), long=True
+            )[0]
+            end_effector = cmds.ikHandle(handle, query=True, endEffector=True)
+            end_joints = cmds.listConnections(
+                end_effector + ".translateX", source=True, destination=False
+            ) or []
+            if not end_joints:
+                continue
 
-                lastDistanceNode.distance >> divide.input1X
-                divide.input2X.set( lastDistanceNode.distance.get() )
-                divide.operation.set(2)
-                
-                divide.outputX >> currentJoint.scaleX
-                
-            lastDistanceNode = db
-             
-    pm.delete(dm)
-    pm.delete(npc)
-    
-    pm.select(selection, replace = True)
-        
-    
-    
+            cmds.connectAttr(curve + ".worldSpace[0]", nearest + ".inputCurve", force=True)
+            current_joint = cmds.ls(end_joints[0], long=True)[0]
+            last_distance = None
+
+            while current_joint != start_joint:
+                parents = cmds.listRelatives(current_joint, parent=True, fullPath=True) or []
+                if not parents:
+                    break
+                current_joint = parents[0]
+
+                cmds.connectAttr(current_joint + ".worldMatrix[0]", decompose + ".inputMatrix", force=True)
+                point = cmds.createNode("pointOnCurveInfo")
+                cmds.connectAttr(curve + ".worldSpace[0]", point + ".inputCurve")
+
+                cmds.connectAttr(nearest + ".parameter", point + ".parameter", force=True)
+                cmds.disconnectAttr(nearest + ".parameter", point + ".parameter")
+
+                distance = cmds.createNode("distanceBetween")
+                cmds.connectAttr(point + ".position", distance + ".point1")
+                if last_distance:
+                    cmds.connectAttr(point + ".position", last_distance + ".point2")
+                    divide = cmds.createNode("multiplyDivide")
+                    cmds.connectAttr(last_distance + ".distance", divide + ".input1X")
+                    cmds.setAttr(divide + ".input2X", cmds.getAttr(last_distance + ".distance"))
+                    cmds.setAttr(divide + ".operation", 2)
+                    cmds.connectAttr(divide + ".outputX", current_joint + ".scaleX")
+
+                last_distance = distance
+    finally:
+        cmds.delete(decompose, nearest)
+        cmds.select(selection, replace=True)
+
 
 def run():
     create_stretchy_spline()

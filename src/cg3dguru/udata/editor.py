@@ -3,7 +3,7 @@ import os
 import sys
 import importlib
 
-import pymel.core as pm
+from maya import cmds
 
 import cg3dguru.ui as ui
 import cg3dguru.udata
@@ -17,7 +17,7 @@ class UserDataEditor(ui.Window):
         super(UserDataEditor, self).__init__(windowKey, uiFilepath)
 
         self.add_script_job()
-        self.maya_nodes_selected = len(pm.ls(sl=True)) > 0
+        self.maya_nodes_selected = len(cmds.ls(sl=True) or []) > 0
 
         self.classes = cg3dguru.udata.Utils.get_class_names()
         keys = list(self.classes.keys())
@@ -52,7 +52,7 @@ class UserDataEditor(ui.Window):
         
         
     def add_script_job(self):
-        jobId   = pm.scriptJob( event=['SelectionChanged', self.maya_selection_changed] )
+        jobId = cmds.scriptJob(event=['SelectionChanged', self.maya_selection_changed])
         #print 'New Job: {0}'.format(jobId)
         self.handler = lambda : self.remove_script_job(jobId)
         #self.jobId = jobId
@@ -62,7 +62,7 @@ class UserDataEditor(ui.Window):
     def remove_script_job(self, jobId):
         #print 'Nuke Job: {0}'.format(jobId)
         self.ui.destroyed.disconnect( self.handler )
-        pm.scriptJob( kill = jobId )
+        cmds.scriptJob(kill=jobId)
         
         
     def _get_item_names(self, listWidget):
@@ -84,7 +84,7 @@ class UserDataEditor(ui.Window):
             newNodes.append(pyNode)
                 
         if newNodes:
-            pm.select(newNodes, replace = True)
+            cmds.select([str(node) for node in newNodes], replace=True)
         else:
             self.ui.statusbar.showMessage("No Data is selected")
     
@@ -95,14 +95,14 @@ class UserDataEditor(ui.Window):
         
         for name in names:
             data_class = self.classes[name] #()
-            for maya_node in pm.ls(sl=True):
+            for maya_node in cmds.ls(sl=True) or []:
                 data_class.add_data( maya_node )
                 
         self.on_selection_changed(self.ui.createDataList)
     
     
     def on_delete(self): 
-        selection = pm.ls(sl=True)
+        selection = cmds.ls(sl=True) or []
         names = self._get_item_names(self.ui.createDataList)
         
         for name in names:
@@ -124,7 +124,7 @@ class UserDataEditor(ui.Window):
             
             nodes.extend(found_nodes)
             
-        pm.select(nodes, replace=True)
+        cmds.select([str(node) for node in nodes], replace=True)
         if not nodes:
             self.ui.statusbar.showMessage('No data found!', 5000)
         else:
@@ -155,7 +155,7 @@ class UserDataEditor(ui.Window):
                 if data:
                     hasData  = True
                 
-                missData = len(data) != len(pm.ls(sl=True))
+                missData = len(data) != len(cmds.ls(sl=True) or [])
             
      
             self.ui.createData.setEnabled(enable)   
@@ -166,7 +166,7 @@ class UserDataEditor(ui.Window):
             
             
     def maya_selection_changed(self):
-        self.maya_nodes_selected = len( pm.ls(sl=True) ) > 0
+        self.maya_nodes_selected = len(cmds.ls(sl=True) or []) > 0
         
         if self.ui.createDataList.isVisible():
             self.on_selection_changed(self.ui.createDataList)
@@ -186,4 +186,3 @@ def run(data_module = None):
     filepath = os.path.join(cg3dguru.udata.__path__[0],  'user_data.ui' )
     editor = UserDataEditor(WINDOW_NAME, filepath)
     editor.ui.show()
-    

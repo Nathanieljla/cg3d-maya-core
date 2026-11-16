@@ -67,4 +67,4 @@ class Window(object): #QWidget):
 
     #filepath = os.path.join( os.path.dirname(__file__), r'ui\UserData.ui' )
     #userData = Window('test', filepath)
-    #userData.ui.show()    
+    #userData.ui.show()

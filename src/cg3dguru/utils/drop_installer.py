@@ -666,7 +666,7 @@ class ModuleManager(QThread):
         
         """
         maya_version = str(self.maya_version)
-        relative_path = '.\{0}'.format(self.relative_module_path)        
+        relative_path = '.\\{0}'.format(self.relative_module_path)
         platform_name =  self.get_platform_string(Commandline.get_platform())
         
         if not self._version_specific:
@@ -901,13 +901,6 @@ class ModuleManager(QThread):
     
      
                 
-    def install_pymel(self):
-        """Installs pymel to a common Maya location"""
-        if not self.package_installed('pymel'):
-            Commandline.pip_install('pymel')
-        
-    
-    
 ##-----begin UI----##
     
 class IconButton(QPushButton):

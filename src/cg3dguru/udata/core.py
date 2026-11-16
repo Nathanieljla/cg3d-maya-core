@@ -25,11 +25,24 @@ the child size is predetermined.
 __author__ = "Nathaniel Albright"
 __email__ = "developer@3dcg.guru"
 
-VERSION = (0, 9, 0)
+VERSION = (2, 0, 0)
 __version__ = '.'.join(map(str, VERSION))
 
 
-import pymel.core as pm
+import inspect
+import sys
+
+from maya import cmds
+from maya.api import OpenMaya as om
+
+from ..maya import Attribute, Node, as_node, create_node, has_attr, ls, node_name, plug_name
+
+
+__all__ = [
+    'VERSION', '__version__', 'DEFAULT_NODE_TYPE', 'AUTO_UPDATE',
+    'REPORT_WARNINGS', 'VersionUpdateException', 'Attr', 'Compound',
+    'create_attr', 'Record', 'BaseData', 'Utils', 'Node', 'Attribute',
+]
 
 #Don't change _RECORDS_NAME unless your project really desires an alternative
 #name for the life of all scripts and tools that leverage the udata module
@@ -52,9 +65,121 @@ BaseData.pre_update_version().
 REPORT_WARNINGS = True
 """Should this module throw warnings?"""
 
+
+def _config(name):
+    """Read public settings from ``cg3dguru.udata`` when overridden."""
+    package = sys.modules.get(__package__)
+    return getattr(package, name, globals()[name]) if package else globals()[name]
+
 class VersionUpdateException(Exception):
     """Thrown when BaseData.update_version() errors"""
     pass
+
+
+def _flag(flags, *names, default=None):
+    for name in names:
+        if name in flags:
+            return flags[name]
+    return default
+
+
+def _apply_api_flags(attribute_fn, flags):
+    """Apply the addAttr flags needed by API-created uData attributes."""
+    properties = (
+        (("keyable", "k"), "keyable"),
+        (("hidden", "h"), "hidden"),
+        (("readable", "r"), "readable"),
+        (("writable", "w"), "writable"),
+        (("storable", "s"), "storable"),
+        (("cachedInternally", "ci"), "cached"),
+        (("multi", "m"), "array"),
+        (("indexMatters", "im"), "indexMatters"),
+    )
+    for aliases, property_name in properties:
+        value = _flag(flags, *aliases)
+        if value is not None:
+            setattr(attribute_fn, property_name, bool(value))
+
+    channel_box = _flag(flags, "channelBox", "cb")
+    if channel_box is not None:
+        attribute_fn.channelBox = bool(channel_box)
+
+    nice_name = _flag(flags, "niceName", "nn")
+    if nice_name is not None:
+        attribute_fn.setNiceNameOverride(str(nice_name))
+
+
+def _enum_fields(enum_names):
+    """Yield ``(label, value)`` pairs using Maya's enumName syntax."""
+    next_value = 0
+    for field in str(enum_names).split(":"):
+        if "=" in field:
+            label, value = field.rsplit("=", 1)
+            next_value = int(value)
+        else:
+            label = field
+        yield label, next_value
+        next_value += 1
+
+
+def _create_api_child(attr, long_name):
+    """Create an unattached API attribute for a large compound block.
+
+    Maya's ``addAttr`` command loses name-based access to a node while an
+    incomplete compound has more than ten children. The dependency-node API
+    has no such schema limit, but all children must be built before the
+    compound is attached to the node.
+    """
+    default = _flag(attr._flags, "defaultValue", "dv")
+
+    if attr.attr_type == "message":
+        attribute_fn = om.MFnMessageAttribute()
+        attribute_object = attribute_fn.create(long_name, long_name)
+    elif attr.attr_type == "enum":
+        attribute_fn = om.MFnEnumAttribute()
+        attribute_object = attribute_fn.create(
+            long_name, long_name, int(default or 0)
+        )
+        enum_names = _flag(attr._flags, "enumName", "en", default="")
+        for label, value in _enum_fields(enum_names):
+            attribute_fn.addField(label, value)
+    else:
+        numeric_types = {
+            "bool": om.MFnNumericData.kBoolean,
+            "byte": om.MFnNumericData.kByte,
+            "char": om.MFnNumericData.kChar,
+            "short": om.MFnNumericData.kShort,
+            "long": om.MFnNumericData.kInt,
+            "float": om.MFnNumericData.kFloat,
+            "double": om.MFnNumericData.kDouble,
+        }
+        if attr.attr_type not in numeric_types:
+            raise TypeError(
+                "uData compounds with more than ten children currently "
+                "require direct message, enum, or numeric children; {!r} "
+                "uses {!r}.".format(long_name, attr.attr_type)
+            )
+        attribute_fn = om.MFnNumericAttribute()
+        if default is None:
+            default = False if attr.attr_type == "bool" else 0
+        attribute_object = attribute_fn.create(
+            long_name, long_name, numeric_types[attr.attr_type], default
+        )
+        minimum = _flag(attr._flags, "minValue", "min")
+        maximum = _flag(attr._flags, "maxValue", "max")
+        soft_minimum = _flag(attr._flags, "softMinValue", "smn")
+        soft_maximum = _flag(attr._flags, "softMaxValue", "smx")
+        if minimum is not None:
+            attribute_fn.setMin(minimum)
+        if maximum is not None:
+            attribute_fn.setMax(maximum)
+        if soft_minimum is not None:
+            attribute_fn.setSoftMin(soft_minimum)
+        if soft_maximum is not None:
+            attribute_fn.setSoftMax(soft_maximum)
+
+    _apply_api_flags(attribute_fn, attr._flags)
+    return attribute_object
 
 
 class Attr(object):
@@ -108,7 +233,8 @@ class Attr(object):
 
     @staticmethod
     def _clear_invalid_flags(flags):
-        invalid = [ 'longName', 'ln', 'attributeType', 'at', 'dataType', 'dt', 'p', 'parent', 'numberOfchildren', 'nc']
+        invalid = ['longName', 'ln', 'attributeType', 'at', 'dataType', 'dt',
+                   'p', 'parent', 'numberOfChildren', 'numberOfchildren', 'nc']
         for key in invalid:
             if key in flags:
                 flags.pop(key)
@@ -168,14 +294,14 @@ class Compound(Attr):
             children = []
         
         if attr_type not in Compound.compound_types:
-            pm.error('udata Module: {0} is not a valid CompoundType.  Print Compound.CompoundTypes for valid list'.format(attr_type))
+            cmds.error('udata Module: {0} is not a valid CompoundType.  Print Compound.CompoundTypes for valid list'.format(attr_type))
         
         self._target_size = Compound.compound_types[attr_type]
         self._children   = children
         
         if self._target_size and make_elements:
             if self._children:
-                pm.error('udata Module: You supplied children, but also have make_elements = True.  Children will be erased')
+                cmds.error('udata Module: You supplied children, but also have make_elements = True.  Children will be erased')
             
             self._make_elements()
 
@@ -207,8 +333,8 @@ class Compound(Attr):
     def add_child(self, child):
         """Add an attribute to this Compound as a child"""
         
-        if self._target_size and len(self._children) > self._target_size:
-            pm.error('udata Module: Compound instance has reached the max allowed children')
+        if self._target_size and len(self._children) >= self._target_size:
+            cmds.error('udata Module: Compound instance has reached the max allowed children')
             
         self._children.append(child)
         
@@ -233,7 +359,7 @@ class Compound(Attr):
             valid_size = self.count() == self._target_size
             
         if not valid_size:
-            pm.error('udata module: {0} does not have the required number of children'.format(self.attr_type))
+            cmds.error('udata module: {0} does not have the required number of children'.format(self.attr_type))
 
 
 
@@ -368,15 +494,17 @@ class BaseData(Attr):
     @staticmethod
     def _create_records(node):
         global _RECORDS_NAME
-        pm.addAttr(node, ln = _RECORDS_NAME,  dt = 'string', m= True)
+        cmds.addAttr(node_name(node), ln=_RECORDS_NAME, dt='string', m=True)
                           
        
     @classmethod     
     def _get_records(cls, node, force_add ):
         if not node:
-            pm.error('udata Module : Can\'t get records. node is None')
+            cmds.error('udata Module : Can\'t get records. node is None')
+
+        node = as_node(node)
             
-        has_records = pm.hasAttr(node, _RECORDS_NAME)
+        has_records = has_attr(node, _RECORDS_NAME)
                 
         if (not has_records) and force_add:
             cls._create_records( node )
@@ -442,7 +570,7 @@ class BaseData(Attr):
  
     @classmethod
     def _find_attr_conflicts(cls):
-        attr_names = cls.get_attribute_names()
+        attr_names = cls.get_maya_attribute_names()
         flags = cls.get_default_flags()
         cls._clear_invalid_flags(flags)
         
@@ -455,7 +583,7 @@ class BaseData(Attr):
         
         conflicts = []
         for attr_name in attr_names:
-            if pm.hasAttr(cls._node, attr_name):
+            if has_attr(cls._node, attr_name):
                 conflicts.append(attr_name)
                 
         if conflicts:
@@ -466,7 +594,7 @@ class BaseData(Attr):
 
             class_name = cls.__name__
             errorMessage = 'udata Attribute Conflict :: Attribute Name(s) : {0} from class "{1}" conflicts with one of these existing blocks of data : {2}'
-            pm.error( errorMessage.format(conflicts, class_name, record_names) )
+            cmds.error(errorMessage.format(conflicts, class_name, record_names))
  
     @classmethod          
     def _add_attr(cls, attr, prefix, parent_name):
@@ -477,14 +605,14 @@ class BaseData(Attr):
            
         if isinstance(attr, Compound):
             attr.validate()
-            pm.addAttr(cls._node, ln = attr_name, at = attr.attr_type, nc = attr.count(), **attr._flags)
+            cmds.addAttr(node_name(cls._node), ln=attr_name, at=attr.attr_type, nc=attr.count(), **attr._flags)
             for child in attr.get_children():
                 cls._add_attr(child, '', attr_name)
             
         elif attr.attr_type in Attr.data_types:
-            pm.addAttr(cls._node, ln = attr_name, dt = attr.attr_type, **attr._flags)             
+            cmds.addAttr(node_name(cls._node), ln=attr_name, dt=attr.attr_type, **attr._flags)
         else:   
-            pm.addAttr(cls._node, ln = attr_name, at = attr.attr_type, **attr._flags)     
+            cmds.addAttr(node_name(cls._node), ln=attr_name, at=attr.attr_type, **attr._flags)
            
            
     @classmethod                   
@@ -506,13 +634,60 @@ class BaseData(Attr):
             
         return name_list
 
+
+    @classmethod
+    def get_maya_attribute_names(cls):
+        """Return the actual Maya names, including any class prefix."""
+        cls._init_class_attributes()
+        prefix = cls.get_prefix()
+        prefix = prefix + '_' if prefix else ''
+        names = []
+
+        def collect(attr, current_prefix):
+            names.append(current_prefix + attr.name)
+            if isinstance(attr, Compound):
+                for child in attr.get_children():
+                    collect(child, '')
+
+        for attr in cls.attributes:
+            collect(attr, prefix)
+        return names
+
       
     @classmethod
     def _init_class_attributes(cls):
         if not cls.attributes:
             cls.attributes = cls.get_attributes()
-        
-        
+
+
+    @classmethod
+    def _copyable_attr_names(cls, source, target, attr_names):
+        """Only names that resolve on both nodes can be handed to copyAttr.
+
+        Attributes that are new in this class version won't exist on the old
+        data, and attributes dropped by this version won't exist on the new
+        data. Either way there's nothing to transfer.
+        """
+        return [name for name in attr_names
+                if has_attr(source, name) and has_attr(target, name)]
+
+
+    @classmethod
+    def _unlock_attrs(cls, node, attr_names):
+        """Unlocks the named attrs and returns the names that were locked"""
+        was_locked = []
+        for name in attr_names:
+            if not has_attr(node, name):
+                continue
+
+            attr = node.attr(name)
+            if attr.isLocked():
+                attr.unlock()
+                was_locked.append(name)
+
+        return was_locked
+
+
     @classmethod
     def get_attributes(cls):
         """MUST IMPLEMENT : A list of udata.Attrs stored in this class.
@@ -521,7 +696,7 @@ class BaseData(Attr):
         the attributes they want to create and store in Maya. The function
         must also be declared as a class or static method.        
         """
-        pm.error( 'udata Module: You\'re attempting to get attributes for class {0} that has no get_attributes() overridden'.format(cls.__name__) )       
+        cmds.error('udata Module: You\'re attempting to get attributes for class {0} that has no get_attributes() overridden'.format(cls.__name__))
        
        
 ###----Update Methods----
@@ -535,18 +710,18 @@ class BaseData(Attr):
         is False by default.
         
         Args:
-            old_data (pymel.general.Attr) : The data that's about to be updated.
+            old_data (Attribute) : The data that's about to be updated.
             old_version_number (Tuple) : The version information of the old_data.
         
         Returns:
             Bool: True if update_version() should be called, else False.
         """
-        global AUTO_UPDATE
-        if not AUTO_UPDATE and REPORT_WARNINGS:
-            pm.warning('cg3dguru.udata : Skip updating old data on "{}" of type "{}" because AUTO_UPDATE is False. Consider overriding pre_update_version(). Repress this warning with udata.REPORT_WARNINGS = False'
+        auto_update = _config('AUTO_UPDATE')
+        if not auto_update and _config('REPORT_WARNINGS'):
+            cmds.warning('cg3dguru.udata : Skip updating old data on "{}" of type "{}" because AUTO_UPDATE is False. Consider overriding pre_update_version(). Repress this warning with udata.REPORT_WARNINGS = False'
                        .format(old_data.node(), cls.__name__))
         
-        return AUTO_UPDATE
+        return auto_update
      
     @classmethod  
     def update_version(cls, old_data, old_version_number):
@@ -554,67 +729,130 @@ class BaseData(Attr):
         
         The default implimentation of this happens in five steps.
         1. A temporary node is created with the latest class data
-        2. The current data values are copied to the temp node using pymel.core.copyAttr
+        2. The current data values are copied to the temp node using cmds.copyAttr
         3. The current data is deleted off the original node
         4. The new data is added to the original node.
         5. The data values are transferred back from the temp node to the original node.
-        
+
+        Only attributes that exist in both the old and the new definition are
+        transferred. Attributes that are new to this version are left at the
+        default values defined by their Attr() flags, which sub-classes can
+        then adjust by overriding post_update_version().
+
         Failure of this process could occur during step #2. In this situation
         udata.VersionUpdateException is raised and the user will need to
         determine their own logic for how to update/replace their existing
         data with the new class version.
-        
+
         Args:
-            old_data (pymel.general.Attr) : the data of the outdated version.
+            old_data (Attribute) : the data of the outdated version.
             old_version_number (tuple) : The Max, min, patch value of the old data.
-        
+
         Returns:
             Bool : True if the update was successful else False.
         """
-        
-        
-        #Copy the attribute values to a temporary node
-        #cls._node = old_data.node()
-        
-        temp_node, data = cls.create_node(name = 'TRASH', ss=True)
-        name_list = cls.get_attribute_names()
-        try:
-            pm.copyAttr(cls._node, temp_node, at=name_list, ic=True, oc=True, values=True)
-        except:
-            #delete the tempNode
-            pm.delete(temp_node)
-            
-            message = 'Please impliment custom update logic for class: {0}  oldVersion: {1}  newVersion: {2}'.format( cls.get_name(), old_version_number, cls.get_class_version())
-            raise VersionUpdateException(message)
-        
-        #delete the attributes off the current node
-        pm.deleteAttr( cls._node, at = cls.get_name() )
-        
-        #rebuild with the latest definition
-        cls._create_data()
 
-        #transfer attributes back to original node
-        pm.copyAttr(temp_node, cls._node, at = name_list, ic = True, oc = True, values = True)  
-        
-        #delete the tempNode
-        pm.delete(temp_node)
-        
+        node      = cls._node
+        data_name = cls.get_name()
+
+        #adding and deleting attributes on a referenced node isn't something
+        #we can reliably round-trip, so don't try.
+        if cmds.referenceQuery(node_name(node), isNodeReferenced=True):
+            if _config('REPORT_WARNINGS'):
+                cmds.warning('cg3dguru.udata : Can\'t update "{0}" on referenced node "{1}".'
+                           .format(data_name, node))
+            return False
+
+        #get_attribute_names() returns unprefixed names while _add_attr()
+        #writes prefixed ones, so with a prefix we can't match the old attrs
+        #to the new ones by name. Refuse instead of silently transfering
+        #nothing.
+        if cls.get_prefix():
+            if _config('REPORT_WARNINGS'):
+                cmds.warning('cg3dguru.udata : "{0}" uses an attribute prefix. Please override update_version() with custom logic.'
+                           .format(data_name))
+            return False
+
+        #Copy the attribute values to a temporary node
+        temp_node, data = cls.create_node(name = 'TRASH', ss=True)
+
+        try:
+            name_list = cls.get_attribute_names()
+            copy_list = cls._copyable_attr_names(node, temp_node, name_list)
+
+            #copyAttr can't write into a locked plug and the temp node just
+            #ran post_create(), which may well have locked some of them.
+            cls._unlock_attrs(temp_node, copy_list)
+
+            try:
+                cmds.copyAttr(node_name(node), node_name(temp_node), at=copy_list, ic=True, oc=True, values=True)
+            except:
+                message = 'Please impliment custom update logic for class: {0}  oldVersion: {1}  newVersion: {2}'.format( data_name, old_version_number, cls.get_class_version())
+                raise VersionUpdateException(message)
+
+            #a locked child stops the parent compound from being deleted, so
+            #clear the locks first and remember them for later.
+            was_locked = cls._unlock_attrs(node, name_list + [data_name])
+
+            #delete the attributes off the current node
+            cmds.deleteAttr(node_name(node), at=data_name)
+
+            #rebuild with the latest definition
+            cls._create_data()
+
+            #transfer attributes back to original node
+            cmds.copyAttr(node_name(temp_node), node_name(node), at=copy_list, ic=True, oc=True, values=True)
+
+            #restore whatever locks the old version was using. We deliberately
+            #don't re-run post_create(), because post_create() is allowed to
+            #generate one-time data (ids, network connections) that must not
+            #be regenerated during an update.
+            for name in was_locked:
+                if has_attr(node, name):
+                    node.attr(name).lock()
+
+        finally:
+            #delete the tempNode
+            if temp_node is not None and temp_node.exists():
+                cmds.delete(node_name(temp_node))
+
         return True
 
-    @classmethod    
-    def post_update_version(cls, data, update_successful):
+    @classmethod
+    def post_update_version(cls, data, update_successful, old_version_number = None):
         """Called after update_version()
-        
+
         The default implimentation does nothing. Users can override
         this function if they want to do any post processing after
-        the update_function has been run.
-        
+        the update_function has been run. This is also where a sub-class
+        initializes attributes that are new to this version, as
+        update_version() can only transfer values that existed in both the
+        old and the new definition.
+
         args:
-            data (pymel.general.Attr) : The newly updated data if successful
+            data (Attribute) : The newly updated data if successful
             else the old data.
             update_successful (bool) : Was the update successful.
-        """        
+            old_version_number (tuple, optional) : The version of the data
+            that was replaced. This argument was added in udata 0.10.0 and
+            is only passed to overrides that declare it.
+        """
         pass
+
+
+    @classmethod
+    def _call_post_update_version(cls, data, update_successful, old_version_number):
+        """Calls post_update_version() without breaking older overrides.
+
+        old_version_number was added to post_update_version() in udata
+        0.10.0. Sub-classes written against the older two argument signature
+        are still supported and simply don't recieve it.
+        """
+        params = inspect.signature(cls.post_update_version).parameters
+        if 'old_version_number' in params:
+            cls.post_update_version( data, update_successful, old_version_number )
+        else:
+            cls.post_update_version( data, update_successful )
     
     
 ###----Data Methods----
@@ -664,18 +902,52 @@ class BaseData(Attr):
         long_name = cls.get_name()
         
         flags = cls.get_default_flags()
-        cls._clear_invalid_flags(flags)        
-        
-        pm.addAttr(cls._node, ln = long_name, at = 'compound', nc = len( attrs ), **flags )
+        cls._clear_invalid_flags(flags)
+
+        if len(attrs) > 10:
+            cls._create_large_compound(long_name, attrs, flags)
+        else:
+            cmds.addAttr(
+                node_name(cls._node), ln=long_name, at='compound',
+                nc=len(attrs), **flags
+            )
 
         prefix = cls.get_prefix()
         if prefix:
             prefix += '_'
 
-        for attr in attrs:
-            cls._add_attr(attr, prefix, long_name)       
+        if len(attrs) <= 10:
+            for attr in attrs:
+                cls._add_attr(attr, prefix, long_name)
          
         return cls._node.attr(long_name)
+
+    @classmethod
+    def _create_large_compound(cls, long_name, attrs, flags):
+        """Create an oversized direct-child compound atomically via Maya API."""
+        selection = om.MSelectionList()
+        selection.add(node_name(cls._node))
+        node_object = selection.getDependNode(0)
+
+        compound_fn = om.MFnCompoundAttribute()
+        compound_object = compound_fn.create(long_name, long_name)
+        _apply_api_flags(compound_fn, flags)
+
+        prefix = cls.get_prefix()
+        prefix = prefix + '_' if prefix else ''
+        for attr in attrs:
+            if isinstance(attr, Compound):
+                raise TypeError(
+                    "uData compounds with more than ten direct children do "
+                    "not yet support nested Compound definitions."
+                )
+            compound_fn.addChild(
+                _create_api_child(attr, prefix + attr.name)
+            )
+
+        modifier = om.MDGModifier()
+        modifier.addAttribute(node_object, compound_object)
+        modifier.doIt()
         
     @classmethod   
     def post_create(cls, data):
@@ -686,7 +958,7 @@ class BaseData(Attr):
         data to an existing node network!
         
         Args:
-            data (pymel.general.Attr) : The newly created data. 
+            data (Attribute) : The newly created data.
         
         """        
         pass
@@ -696,11 +968,11 @@ class BaseData(Attr):
         """Attempts to return the class data stored on the input node.
         
         Args:
-            node (pyNode) : The node you want to get/store data on
+            node (str or Node) : The node you want to get/store data on
             force_add (bool) : Should the data be added if none exists?
             
         Returns:
-            pymel.general.Attr : The data stored on the node or None.        
+            Attribute : The data stored on the node or None.
         """
 
         #We need to cache the current data, because get_data might be called
@@ -708,50 +980,55 @@ class BaseData(Attr):
         #need to make sure we reset the data as we leave the scope. reseting
         #happens on exit.
         cls._data_stack.append((cls._records, cls._node))
-        
-        cls._records = None
-        cls._node    = node
-        
-        record = cls.get_record(node)
-        
-        if not record and force_add:
-            #lets make sure the records data exists
-            cls._records = cls._get_records(node, force_add = True)
-            
-        #If found make sure the data block doesn't need updating.
-        if record:
-            data_name = cls.get_name() 
-            record_version = record.version
-            current_version = cls.get_class_version()
-            
-            #Attempt to updat the version
-            if record_version < current_version:
-                old_data = cls._node.attr(data_name)
-                
-                if cls.pre_update_version(old_data, record_version):
-                    updated = cls.update_version(old_data, record_version)
-                    if updated:
-                        record.version = current_version
-                                
-                    data = cls._node.attr(data_name)
-                    cls.post_update_version( data, updated )
 
-            
-            data = cls._node.attr(data_name)
-                    
-        #else, add the data to the node           
-        elif force_add:
-            cls._find_attr_conflicts()
-            data = cls._create_data()
-            cls._add_data_to_records()
-            cls.post_create( data )
-            
-        else:
-            data = None
+        #The stack must be popped no matter how we leave this scope. A leaked
+        #entry would desync cls._node/cls._records for every BaseData class
+        #for the rest of the session.
+        try:
+            cls._records = None
+            cls._node = as_node(node)
 
-        cls._records, cls._node = cls._data_stack.pop(-1)
+            record = cls.get_record(node)
 
-        return data      
+            if not record and force_add:
+                #lets make sure the records data exists
+                cls._records = cls._get_records(node, force_add = True)
+
+            #If found make sure the data block doesn't need updating.
+            if record:
+                data_name = cls.get_name()
+                record_version = record.version
+                current_version = cls.get_class_version()
+
+                #Attempt to updat the version
+                if record_version < current_version:
+                    old_data = cls._node.attr(data_name)
+
+                    if cls.pre_update_version(old_data, record_version):
+                        updated = cls.update_version(old_data, record_version)
+                        if updated:
+                            record.version = current_version
+
+                        data = cls._node.attr(data_name)
+                        cls._call_post_update_version( data, updated, record_version )
+
+
+                data = cls._node.attr(data_name)
+
+            #else, add the data to the node
+            elif force_add:
+                cls._find_attr_conflicts()
+                data = cls._create_data()
+                cls._add_data_to_records()
+                cls.post_create( data )
+
+            else:
+                data = None
+
+        finally:
+            cls._records, cls._node = cls._data_stack.pop(-1)
+
+        return data
     
     @classmethod  
     def add_data(cls, node):
@@ -761,10 +1038,10 @@ class BaseData(Attr):
         ensure the data format is up-to-date.
         
         Args:
-            node (pyNode) : The node to add the data to.
+            node (str or Node) : The node to add the data to.
                 
         Returns:
-            pymel.general.Attr : The data added to the node.
+            Attribute : The data added to the node.
         """
         return cls.get_data(node, force_add=True)
     
@@ -774,14 +1051,14 @@ class BaseData(Attr):
         """Remove the class attributes off of the input node
 
         Args:
-            node (pyNode) : The node to remove the data from.        
+            node (str or Node) : The node to remove the data from.
         """
         record = cls.get_record(node)
         
         if record:
             record.attr.unlock()
-            pm.removeMultiInstance(record.attr, b=True)
-            pm.deleteAttr(node, at = cls.get_name() )   
+            cmds.removeMultiInstance(plug_name(record.attr), b=True)
+            cmds.deleteAttr(node_name(node), at=cls.get_name())
             
 
 ###----Misc Methods----
@@ -798,10 +1075,10 @@ class BaseData(Attr):
             nodeType (str, optional) : The name of the maya node to create.
             
         Returns:
-            Tuple : The newly created pyNode as element zero and the data as
+            Tuple : The newly created Node as element zero and the data as
             element 1.
         """
-        pynode = pm.general.createNode(nodeType, **kwargs)
+        pynode = create_node(nodeType, **kwargs)
     
         if pynode:
             #classInstance = cls()
@@ -873,7 +1150,7 @@ class Utils(object):
             if 'm' in default_flags or 'multi' in default_flags:
                 continue
             
-            attribute_names = subclass.get_attribute_names()
+            attribute_names = subclass.get_maya_attribute_names()
             for attr_name in attribute_names:
                 if attr_name not in attrs:
                     attrs[attr_name] = [subclass.__name__]
@@ -889,11 +1166,11 @@ class Utils(object):
         if conflicts:
             for attr_name in conflicts:
                 classes = conflicts[attr_name]
-                if REPORT_WARNINGS:
-                    pm.warning( 'udata.Utils :: Attr conflict. : "{0}" exists in classes: {1}'.format(attr_name, classes))
+                if _config('REPORT_WARNINGS'):
+                    cmds.warning('udata.Utils :: Attr conflict. : "{0}" exists in classes: {1}'.format(attr_name, classes))
                 
             if error_on_conflict:
-                pm.error( 'udata.Utils :: Found conflict between attribute names. See console for info.')
+                cmds.error('udata.Utils :: Found conflict between attribute names. See console for info.')
                 
         return conflicts
     
@@ -903,23 +1180,25 @@ class Utils(object):
         """Return a list of nodes that have any (or specific) data attached
         
         Users can pass in a list of nodes to examine or if no nodes are
-        provided they can pass in the standard pymel.core.ls args to generate
+        provided they can pass in the standard maya.cmds.ls args to generate
         a list of node to inspect.
         
         Args:
-            nodes (pyNode list, optional) : What nodes should the function
+            nodes (str or Node list, optional) : What nodes should the function
             search?
             data_class (BaseData sub-class, optional) : What class data
             are we looking for. If this is None then a node will be
             returned if it has any data attached to it.
-            **kwargs (pymel.ls flags) : Only considered if node is None.
+            **kwargs (maya.cmds.ls flags) : Only considered if node is None.
             
         Returns:
-            list : A list of pyNodes that match the given search criteria. 
+            list : A list of Nodes that match the given search criteria.
         """
         if not nodes:
-            nodes = pm.ls(*args, **kwargs)
-            nodes.sort()
+            nodes = ls(*args, **kwargs)
+        else:
+            nodes = [as_node(node) for node in nodes]
+        nodes.sort()
         
         data_nodes = []
         for node in nodes:
@@ -940,7 +1219,7 @@ class Utils(object):
 
         This function can be used to ensure current scene nodes have their
         data up-to-date. Users can pass in a list of nodes to examine or if
-        no nodes are provided they can pass in the standard pymel.core.ls
+        no nodes are provided they can pass in the standard maya.cmds.ls
         args to generate a list of node to inspect.
         
         Validating a scene might look something like this:
@@ -957,12 +1236,14 @@ class Utils(object):
         Utils.validate_version()
             
         Args:
-            nodes (pyNode list, optional) : What nodes should the function
+            nodes (str or Node list, optional) : What nodes should the function
             search?
-            **kwargs (pymel.ls flags) : Only considered if nodes is None.
+            **kwargs (maya.cmds.ls flags) : Only considered if nodes is None.
         """
         if not nodes:
-            nodes = pm.ls(*args, **kwargs)        
+            nodes = ls(*args, **kwargs)
+        else:
+            nodes = [as_node(node) for node in nodes]
                 
         classes= Utils.get_classes()
         

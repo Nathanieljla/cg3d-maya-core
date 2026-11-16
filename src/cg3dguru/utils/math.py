@@ -1,7 +1,18 @@
-import math
+"""Transform and vector helpers using Maya Python API 2.0."""
+
+from __future__ import annotations
+
 import enum
-import maya.cmds
-import pymel.core as pm
+import math
+
+from maya import cmds
+from maya.api import OpenMaya as om
+
+from ..maya import Node, node_name
+
+
+Vector = om.MVector
+Matrix = om.MMatrix
 
 
 class Axis(enum.Flag):
@@ -13,8 +24,8 @@ class Axis(enum.Flag):
     NEG_X = X | REVERSE
     NEG_Y = Y | REVERSE
     NEG_Z = Z | REVERSE
- 
- 
+
+
 class Space(enum.Enum):
     OBJECT = 0
     WORLD = 1
@@ -22,8 +33,8 @@ class Space(enum.Enum):
     CAMERA = 3
     TANGENT = 4
     UV = 5
-    
-    
+
+
 class Direction(enum.Flag):
     FORWARD = enum.auto()
     UP = enum.auto()
@@ -32,372 +43,290 @@ class Direction(enum.Flag):
     BACKWARDS = FORWARD | REVERSE
     DOWN = UP | REVERSE
     LEFT = RIGHT | REVERSE
-    
-    
+
+
 class Flip(enum.Enum):
     FORWARD = 0
     UP = 1
     RIGHT = 2
-    
-    
-class MatrixUtils(object):
-    """
-    Allows users to get and set transforms in the generic terms of forward, up, and right (fur).
-    Users define the mapping of a axis to a direction.
-    """
-    def __init__(self, transform_node = None, *args, **kwargs):  
+
+
+def _vector(value) -> om.MVector:
+    return om.MVector(value)
+
+
+def _normal(value) -> om.MVector:
+    result = _vector(value)
+    result.normalize()
+    return result
+
+
+def _matrix_values(matrix: om.MMatrix) -> list[float]:
+    return [matrix.getElement(row, column) for row in range(4) for column in range(4)]
+
+
+class MatrixUtils:
+    """Get and set transforms in forward/up/right terms."""
+
+    def __init__(self, transform_node=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
-            
         self._transform_node = None
         self.transform_node = transform_node
-        
         self._right_axis = Axis.X
         self._up_axis = Axis.Y
         self._forward_axis = Axis.Z
-        
         self._flip = Flip.RIGHT
-        
-        #what space the matrix operations take place in
         self._space = Space.WORLD
-        
-
-##--properties----------------------------------------------------
-
 
     @property
-    def transform_node(self) -> pm.nodetypes.Transform:
+    def transform_node(self) -> str | Node | None:
         return self._transform_node
-    
+
     @transform_node.setter
-    def transform_node(self, node: pm.nodetypes.Transform):
-        if node is not None and not isinstance( node, pm.nodetypes.Transform ):
-            pm.system.error('Type Error')
-            
-        self._transform_node = node        
-    
+    def transform_node(self, node: str | Node | None):
+        if node is not None:
+            name = node_name(node)
+            if not cmds.objExists(name) or not cmds.objectType(name, isAType="transform"):
+                raise TypeError("Expected a Maya transform node")
+        self._transform_node = node
+
     @property
     def space(self) -> Space:
         return self._space
-    
+
     @space.setter
     def space(self, value: Space):
         if not isinstance(value, Space):
-            pm.system.error('Type Error')
-        
-        self._space = value;
-        
+            raise TypeError("Expected Space")
+        self._space = value
+
     @property
     def Flip(self) -> Flip:
         return self._flip
-    
+
     @Flip.setter
     def Flip(self, value: Flip):
         if not isinstance(value, Flip):
-            pm.system.error('Type Error')
-            
+            raise TypeError("Expected Flip")
         self._flip = value
-    
+
     @property
-    def forward(self) -> pm.datatypes.Vector:
-        return MatrixUtils.get_axis_vector( self.get_matrix(), self._forward_axis)
-     
+    def forward(self) -> om.MVector:
+        return self.get_axis_vector(self.get_matrix(), self._forward_axis)
+
     @property
-    def up(self) -> pm.datatypes.Vector:
-        return MatrixUtils.get_axis_vector( self.get_matrix(), self._up_axis)
-    
+    def up(self) -> om.MVector:
+        return self.get_axis_vector(self.get_matrix(), self._up_axis)
+
     @property
-    def right(self) -> pm.datatypes.Vector:
-        return MatrixUtils.get_axis_vector( self.get_matrix(), self._right_axis)    
-    
- 
-##--static methods----------------------------------------------------------------------------
-     
-    @staticmethod
-    def get_world_pos( obj_name ):
-        x_list = pm.xform( obj_name, query = True, matrix = True, worldSpace = True )
-        return pm.datatypes.Vector( *x_list[12:15] )    
+    def right(self) -> om.MVector:
+        return self.get_axis_vector(self.get_matrix(), self._right_axis)
 
     @staticmethod
-    def get_matrix_position(matrix: pm.datatypes.Matrix):
-        return pm.datatypes.Vector(matrix.a30, matrix.a31, matrix.a32)
-    
-    
+    def get_world_pos(obj_name) -> om.MVector:
+        values = cmds.xform(node_name(obj_name), query=True, matrix=True, worldSpace=True)
+        return om.MVector(*values[12:15])
+
     @staticmethod
-    def set_matrix_translation(matrix: pm.datatypes.Matrix,
-                        position: pm.datatypes.Vector):
-        matrix.a30 = position.x
-        matrix.a31 = position.y
-        matrix.a32 = position.z
-    
-    
+    def get_matrix_position(matrix: om.MMatrix) -> om.MVector:
+        return om.MVector(
+            matrix.getElement(3, 0),
+            matrix.getElement(3, 1),
+            matrix.getElement(3, 2),
+        )
+
     @staticmethod
-    def get_axis_vector(matrix: pm.datatypes.Matrix,
-                        axis: Axis):
-        
-        vector = None
+    def set_matrix_translation(matrix: om.MMatrix, position: om.MVector):
+        position = _vector(position)
+        matrix.setElement(3, 0, position.x)
+        matrix.setElement(3, 1, position.y)
+        matrix.setElement(3, 2, position.z)
+        return matrix
+
+    @staticmethod
+    def get_axis_vector(matrix: om.MMatrix, axis: Axis) -> om.MVector:
         if Axis.X in axis:
-            vector = pm.datatypes.Vector(matrix.a00, matrix.a01, matrix.a02)
+            row = 0
         elif Axis.Y in axis:
-            vector = pm.datatypes.Vector(matrix.a10, matrix.a11, matrix.a12)
+            row = 1
         elif Axis.Z in axis:
-            vector = pm.datatypes.Vector(matrix.a20, matrix.a21, matrix.a22)
-            
+            row = 2
+        else:
+            raise ValueError("Axis must contain X, Y, or Z")
+
+        vector = om.MVector(*(matrix.getElement(row, column) for column in range(3)))
+        return -vector if Axis.REVERSE in axis else vector
+
+    @staticmethod
+    def set_axis_vector(matrix: om.MMatrix, vector: om.MVector, axis: Axis):
+        if Axis.X in axis:
+            row = 0
+        elif Axis.Y in axis:
+            row = 1
+        elif Axis.Z in axis:
+            row = 2
+        else:
+            raise ValueError("Axis must contain X, Y, or Z")
+
+        vector = _vector(vector)
         if Axis.REVERSE in axis:
             vector = -vector
-            
-        return vector
-        
-        
+        for column, value in enumerate((vector.x, vector.y, vector.z)):
+            matrix.setElement(row, column, value)
+        return matrix
+
     @staticmethod
-    def set_axis_vector(matrix: pm.datatypes.Matrix,
-                        vector: pm.datatypes.Vector,
-                        axis: Axis):
-        if axis == Axis.X:
-            matrix.a00 = vector.x
-            matrix.a01 = vector.y
-            matrix.a02 = vector.z
-        if axis == Axis.Y:
-            matrix.a10 = vector.x
-            matrix.a11 = vector.y
-            matrix.a12 = vector.z
-        if axis == Axis.Z:
-            matrix.a20 = vector.x
-            matrix.a21 = vector.y
-            matrix.a22 = vector.z
-            
-            
+    def ensure_right_handedness(forward, up, right, handedness_rule: Flip):
+        if not (((right ^ up) * forward) > 0 and ((up ^ forward) * right) > 0):
+            target = {
+                Flip.RIGHT: right,
+                Flip.UP: up,
+                Flip.FORWARD: forward,
+            }[handedness_rule]
+            target.x = -target.x
+            target.y = -target.y
+            target.z = -target.z
+
     @staticmethod
-    def ensure_right_handedness( forward, up, right, handedness_rule: Flip):
-        if not (right.cross( up ) * forward > 0 and up.cross( forward ) * right > 0):
-            if handedness_rule == Flip.RIGHT:
-                right.x = -right.x
-                right.y = -right.y
-                right.z = -right.z
-            elif handedness_rule == Flip.UP:
-                up.x = -up.x
-                up.y = -up.y
-                up.z = -up.z
-            elif handedness_rule == Flip.FORWARD:
-                forward.x = -forward.x
-                forward.y = -forward.y
-                forward.z = -forward.z    
-            
-            
-    @staticmethod
-    def set_matrix_vectors(matrix: pm.datatypes.Matrix, 
-                           x: pm.datatypes.Vector,
-                           y: pm.datatypes.Vector,
-                           z: pm.datatypes.Vector,
-                           position: pm.datatypes.Vector, 
-                           flip: Flip,
-                           ignore_scale: bool):
-        """
-        Set's the transform_node's f, u, r to the input while ensuring proper right handedness.
-        """
-        
+    def set_matrix_vectors(matrix, x, y, z, position, flip: Flip, ignore_scale: bool):
+        x, y, z = _vector(x), _vector(y), _vector(z)
         MatrixUtils.ensure_right_handedness(z, y, x, flip)
-        
         if ignore_scale:
-            z.normalize()
-            y.normalize()
-            x.normalize()
-        
+            x, y, z = _normal(x), _normal(y), _normal(z)
         MatrixUtils.set_axis_vector(matrix, x, Axis.X)
         MatrixUtils.set_axis_vector(matrix, y, Axis.Y)
         MatrixUtils.set_axis_vector(matrix, z, Axis.Z)
         MatrixUtils.set_matrix_translation(matrix, position)
-        
-        
-    @staticmethod    
-    def get_three_point_matrix( p1, p2, p3, u_dir = None ):
-        f_vec = p3 - p1
-        f_vec.normalize()
-        
-        r_vec = p2 - p1
-        r_vec.normalize()
+        return matrix
 
-        if math.fabs( f_vec * r_vec ) > .999:
-            maya.OpenMaya.MGlobal.displayError( "Your three points are too in line with one another!" )
+    @staticmethod
+    def get_three_point_matrix(p1, p2, p3, u_dir=None):
+        p1, p2, p3 = _vector(p1), _vector(p2), _vector(p3)
+        forward = _normal(p3 - p1)
+        right = _normal(p2 - p1)
+        if math.fabs(forward * right) > 0.999:
+            om.MGlobal.displayError("Your three points are too in line with one another!")
             return None
 
-        r_vec, u_vec = MatrixUtils.get_orthogonal_vectors( f_vec, r_vec, v3_dir = u_dir )
-        #self.ensure_right_handedness( r_vec, u_vec, f_vec )
+        right, up = MatrixUtils.get_orthogonal_vectors(forward, right, v3_dir=u_dir)
+        return MatrixUtils.set_matrix_vectors(
+            om.MMatrix(), forward, up, right, p1, Flip.RIGHT, True
+        )
 
-        matrix = pm.datatypes.Matrix()
-        MatrixUtils.set_matrix_vectors(matrix, f_vec, u_vec, r_vec, p1, Flip.RIGHT, True)
-
-        #pos = cgkit.cgtypes.vec4( p1 )
-        #pos.w = 1
-
-        #three_point_matrix = cgkit.cgtypes.mat4( )
-        #three_point_matrix.setColumn( 3, pos )
-
-        #orient = cgkit.cgtypes.mat3( r_vec, u_vec, f_vec )
-        #three_point_matrix.setMat3( orient )
-
-        return matrix
-        
-       
     @staticmethod
-    def get_world_matrix( obj_name ):
-        """
+    def get_world_matrix(obj_name) -> om.MMatrix:
+        name = node_name(obj_name)
+        values = cmds.xform(name, query=True, matrix=True, worldSpace=True)
+        pivot = cmds.xform(name, query=True, worldSpace=True, rotatePivot=True)
+        values[12:15] = pivot
+        return om.MMatrix(values)
 
-        """
-        matrix_list = pm.xform( obj_name, query = True, matrix = True, worldSpace = True )
-        rotatePivot = pm.xform( obj_name, query = True, ws = True, rotatePivot = True )
-
-        matrix_list[ 12 ] = rotatePivot[ 0 ]
-        matrix_list[ 13 ] = rotatePivot[ 1 ]
-        matrix_list[ 14 ] = rotatePivot[ 2 ]
-
-        return pm.datatypes.Matrix( matrix_list)    
-        
-        
     @staticmethod
-    def set_world_matrix( obj_name, matrix, no_scale = False ):
-        """
-
-        """
+    def set_world_matrix(obj_name, matrix, no_scale=False):
         if no_scale:
-            matrix.scale = pm.datatypes.Vector.one
+            transform = om.MTransformationMatrix(matrix)
+            transform.setScale((1.0, 1.0, 1.0), om.MSpace.kTransform)
+            matrix = transform.asMatrix()
+        cmds.xform(
+            node_name(obj_name), matrix=_matrix_values(matrix), worldSpace=True
+        )
 
-        pm.xform( obj_name, matrix = matrix, worldSpace = True )
-        
-        
     @staticmethod
     def get_third_axis(a1: Axis, a2: Axis):
-        a3 = (a1 | a2) & ~Axis.REVERSE
-        return Axis.ALL & ~a3
-    
-    
+        used = (a1 | a2) & ~Axis.REVERSE
+        return Axis.ALL & ~used
+
     @staticmethod
-    def get_orthogonal_vectors( v1, v2, v3_dir = None ):
-        """
-        Given two vectors (v1 and v2) return two vectors (v2 and v3) that are orthogonal to v1.
-        v3_dir can be used to ensure that v3 matches a desired direction
-        """
-        v3 = v1.cross( v2 ) #.normalize( )
-        v3.normalize()
-        
-        #Make sure the up dir is aiming towards the desired up dir
-        if v3_dir:
-            if v3 * v3_dir < 0:
-                v3 = -v3
+    def get_orthogonal_vectors(v1, v2, v3_dir=None):
+        v1, v2 = _vector(v1), _vector(v2)
+        v3 = _normal(v1 ^ v2)
+        if v3_dir is not None and v3 * _vector(v3_dir) < 0:
+            v3 = -v3
 
-        #Do a final adjustment of the r_vec to account for orthogonal consideration and a flipped Up vec
         scale = v2.length()
-        v2 = v3.cross( v1 )
-        v2.normalize( )
-        v2 *= scale
+        v2 = _normal(v3 ^ v1) * scale
+        return v2, v3
 
-        return (v2, v3)
- 
-##--methods-----------------------------------------------------------------------------------
-                
-                
-    def set_forward_up_coordinates(self, forward: Axis,
-                                   up: Axis):
+    def set_forward_up_coordinates(self, forward: Axis, up: Axis):
         self._forward_axis = forward
         self._up_axis = up
         self._right_axis = self.get_third_axis(forward, up)
-                
-                
-    def set_coordinates(self, foward: Axis,
-                        up: Axis,
-                        right: Axis):
+
+    def set_coordinates(self, foward: Axis, up: Axis, right: Axis):
         self._forward_axis = foward
         self._up_axis = up
         self._right_axis = right
-        
-    
-    def get_matrix(self):
-        return self.transform_node.getMatrix(worldSpace = self._space == Space.WORLD)
-    
-    
-    def get_translation(self):
-        if self.space == Space.WORLD:
-            return self.transform_node.getTranslation('world')
-        else:
-            return self.transform_node.getTranslation('object')
 
+    def get_matrix(self) -> om.MMatrix:
+        if self.transform_node is None:
+            raise ValueError("transform_node is not set")
+        space_flag = (
+            {"worldSpace": True} if self.space == Space.WORLD else {"objectSpace": True}
+        )
+        values = cmds.xform(
+            node_name(self.transform_node),
+            query=True,
+            matrix=True,
+            **space_flag
+        )
+        return om.MMatrix(values)
 
-    def _set_forward_up_right(self,
-                               forward: pm.datatypes.Vector,
-                               up: pm.datatypes.Vector,
-                               right: pm.datatypes.Vector,
-                               flip: Flip,
-                               ignore_scale: bool):
-        """
-        Set's the transform_node's f, u, r to the input while ensuring proper right handedness.
-        """
-        
-        MatrixUtils.ensure_right_handedness(forward, up, right, flip)
-        
+    def get_translation(self) -> om.MVector:
+        if self.transform_node is None:
+            raise ValueError("transform_node is not set")
+        space_flag = (
+            {"worldSpace": True} if self.space == Space.WORLD else {"objectSpace": True}
+        )
+        values = cmds.xform(
+            node_name(self.transform_node),
+            query=True,
+            translation=True,
+            **space_flag
+        )
+        return om.MVector(*values)
+
+    def _set_forward_up_right(self, forward, up, right, flip: Flip, ignore_scale: bool):
+        forward, up, right = _vector(forward), _vector(up), _vector(right)
+        self.ensure_right_handedness(forward, up, right, flip)
         if ignore_scale:
-            forward.normalize()
-            up.normalize()
-            right.normalize()
-        
-        matrix = self.get_matrix()
-        MatrixUtils.set_axis_vector(matrix, forward, self._forward_axis)
-        MatrixUtils.set_axis_vector(matrix, up, self._up_axis)
-        MatrixUtils.set_axis_vector(matrix, right, self._right_axis)
-        
-        self.transform_node.setMatrix(matrix, worldSpace = self.space == Space.WORLD)        
-    
-    
-    def set_forward_up(self,
-                       forward: pm.datatypes.Vector,
-                       up: pm.datatypes.Vector,
-                       priority: Direction = Direction.FORWARD, 
-                       ignore_scale: bool = True):
-        
-        if (Direction.FORWARD in priority):
-            up, right = self.get_orthogonal_vectors(forward, up)
-            
-        elif (Direction.UP in priority):
-            forward, right = self.get_orthogonal_vectors(up, forward)
-            
-        else:
-            pm.system.error('Type Error')
-            
-        self._set_forward_up_right(forward, up, right, Flip.RIGHT, ignore_scale)
-        
-        
-    def set_forward_right(self,
-                       forward: pm.datatypes.Vector,
-                       right: pm.datatypes.Vector,
-                       priority: Direction = Direction.FORWARD,
-                       ignore_scale: bool = True):
-        
-        if (Direction.FORWARD in priority):
-            right, up = self.get_orthogonal_vectors(forward, right)
-            
-        elif (Direction.RIGHT in priority):
-            forward, up = self.get_orthogonal_vectors(right, forward)
+            forward, up, right = _normal(forward), _normal(up), _normal(right)
 
+        matrix = self.get_matrix()
+        self.set_axis_vector(matrix, forward, self._forward_axis)
+        self.set_axis_vector(matrix, up, self._up_axis)
+        self.set_axis_vector(matrix, right, self._right_axis)
+        space_flag = (
+            {"worldSpace": True} if self.space == Space.WORLD else {"objectSpace": True}
+        )
+        cmds.xform(
+            node_name(self.transform_node),
+            matrix=_matrix_values(matrix),
+            **space_flag
+        )
+
+    def set_forward_up(self, forward, up, priority=Direction.FORWARD, ignore_scale=True):
+        if Direction.FORWARD in priority:
+            up, right = self.get_orthogonal_vectors(forward, up)
+        elif Direction.UP in priority:
+            forward, right = self.get_orthogonal_vectors(up, forward)
         else:
-            pm.system.error('Type Error')
-            
+            raise TypeError("Priority must contain FORWARD or UP")
+        self._set_forward_up_right(forward, up, right, Flip.RIGHT, ignore_scale)
+
+    def set_forward_right(self, forward, right, priority=Direction.FORWARD, ignore_scale=True):
+        if Direction.FORWARD in priority:
+            right, up = self.get_orthogonal_vectors(forward, right)
+        elif Direction.RIGHT in priority:
+            forward, up = self.get_orthogonal_vectors(right, forward)
+        else:
+            raise TypeError("Priority must contain FORWARD or RIGHT")
         self._set_forward_up_right(forward, up, right, Flip.UP, ignore_scale)
-        
-        
-    def set_up_right(self,
-                       up: pm.datatypes.Vector,
-                       right: pm.datatypes.Vector,
-                       priority: Direction = Direction.UP,
-                       ignore_scale: bool = True):
-        
-        if (Direction.UP in priority):
+
+    def set_up_right(self, up, right, priority=Direction.UP, ignore_scale=True):
+        if Direction.UP in priority:
             right, forward = self.get_orthogonal_vectors(up, right)
-            
-        elif (Direction.RIGHT in priority):
+        elif Direction.RIGHT in priority:
             up, forward = self.get_orthogonal_vectors(right, up)
-            
         else:
-            pm.system.error('Type Error')
-            
-        self._set_forward_up_right(forward, up, right, Flip.FORWARD, ignore_scale)    
-    
-        
-    
+            raise TypeError("Priority must contain UP or RIGHT")
+        self._set_forward_up_right(forward, up, right, Flip.FORWARD, ignore_scale)

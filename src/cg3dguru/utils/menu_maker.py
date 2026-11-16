@@ -1,6 +1,6 @@
 import sys
 import os
-import pymel.core as pm
+from maya import cmds, mel
 import pkgutil
 import importlib
 from pathlib import Path
@@ -122,7 +122,7 @@ class MenuItem(object):
             #If we're rebuiding this, we'll want to nuke the old object,
             try:
                 print('deleting : {}'.format(menu_item.menu_instance))
-                pm.deleteUI(menu_item.menu_instance)
+                cmds.deleteUI(menu_item.menu_instance)
                 print('delete successful')
             except:
                 pass
@@ -177,22 +177,22 @@ def _build_menu(menu_item, parent):
         if 'tearOff' not in menu_item.params and 'to' not in menu_item.params:    
             menu_item.params['tearOff'] = True
             
-        menu_item.menu_instance = pm.menu(**menu_item.params)  
+        menu_item.menu_instance = cmds.menu(**menu_item.params)
     else:
         if menu_item.divider is not None:
-            pm.menuItem(divider = True, label = menu_item.divider)
+            cmds.menuItem(divider=True, label=menu_item.divider)
 
         if menu_item.is_menu and not menu_item.is_radio_group and menu_item.divider is not None:
             #sub-folder with dividers don't get any menu item
             pass
         
         elif menu_item.is_radio_group:
-            pm.radioMenuItemCollection()
+            cmds.radioMenuItemCollection()
             menu_item.menu_instance = parent
         else:
             if menu_item.is_sub_menu:
                 menu_item.params['subMenu'] = True
-            menu_item.menu_instance = pm.menuItem(**menu_item.params)
+            menu_item.menu_instance = cmds.menuItem(**menu_item.params)
     
     
     ##I attempted to cache each module from MenuItem.parse_module() to a var called "menu_item.module"
@@ -218,7 +218,7 @@ def _build_menu(menu_item, parent):
             _build_menu(child_item, menu_item.menu_instance)
             
             if child_item.is_sub_menu:
-                pm.setParent( '..', menu = True )
+                cmds.setParent('..', menu=True)
         else:
             invalid_names.append(key)
             
@@ -265,11 +265,11 @@ def get_package_namespace(absolute_path):
         count += 1
         loop, name, path = __Add_Parent_Module(name, path)
     if count >= 128:
-        pm.error('make menu found a bad module path:{}'.format(absolute_path))
+        cmds.error('make menu found a bad module path:{}'.format(absolute_path))
 
     #special case for when someone's getting the path of an __init__ file
     if (name.endswith(".__init__")):
-        name = name.removesuffix(".__init__")
+        name = name[:-len(".__init__")]
 
     return name
          
@@ -281,14 +281,14 @@ def run(menu_bar = None, menu_namespace = ''):
     
     """
     if not menu_bar:
-        menu_bar =  pm.language.melGlobals['gMainWindow']    
+        menu_bar = mel.eval('$tmp = $gMainWindow')
     
     if menu_namespace:
         if menu_namespace not in sys.modules:
             try:
                 importlib.import_module(menu_namespace)  
             except:
-                pm.error("Failed to find menu namespace")
+                cmds.error("Failed to find menu namespace")
             
         module = sys.modules[menu_namespace]
         path = module.__path__[0]
@@ -298,7 +298,7 @@ def run(menu_bar = None, menu_namespace = ''):
             from . import menu
             path = menu.__path__[0]
         except:
-            pm.error("Failed to find menu namespace")
+            cmds.error("Failed to find menu namespace")
 
     menu_namespace = get_package_namespace(path)    
 

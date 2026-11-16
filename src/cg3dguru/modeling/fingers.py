@@ -1,7 +1,8 @@
 import os
 import enum
 import cg3dguru.ui as ui
-import pymel.core as pm
+from maya import cmds
+from maya.api import OpenMaya as om
 import cg3dguru.utils.modeling as mu
 
 
@@ -73,14 +74,14 @@ class Fingers_Window(ui.Window):
                 
         
     def plot_joint(self, finger : Finger):
-        sel = pm.ls(sl = True)
+        sel = cmds.ls(sl=True) or []
 
         if len(sel) != 1:
-            pm.system.displayError( 'One nurbsCurve transform must be selected.' )
+            om.MGlobal.displayError('One nurbsCurve transform must be selected.')
             return
 
-        shapes = pm.listRelatives(sel[0], shapes=True)
-        if not shapes or not isinstance(shapes[0], pm.nodetypes.NurbsCurve):
+        shapes = cmds.listRelatives(sel[0], shapes=True, fullPath=True) or []
+        if not shapes or cmds.nodeType(shapes[0]) != 'nurbsCurve':
             return
          
         curve = shapes[0]
@@ -91,11 +92,11 @@ class Fingers_Window(ui.Window):
             
             if id in percents:
                 #create locator
-                locator = pm.createNode('locator')
-                marker = pm.listRelatives(locator, parent=True)[0] #get the shape's Transform
+                locator = cmds.createNode('locator')
+                marker = cmds.listRelatives(locator, parent=True, fullPath=True)[0]
                 
                 name =  (finger.name + '_' + id.name).lower()
-                pm.rename(marker, name)
+                marker = cmds.rename(marker, name)
                 
                 if id is Joint.METACARPAL:
                     mu.plot_percent_on_curve(curve, percents[id], marker)

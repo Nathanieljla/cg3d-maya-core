@@ -1,5 +1,10 @@
-import pymel.core as pm
+from __future__ import annotations
+
 from enum import Enum
+
+from maya import cmds, mel
+
+from ..maya import Node
 
 
 class SourceType(Enum):
@@ -9,14 +14,14 @@ class SourceType(Enum):
     
     
 def _get_hik_windows():
-    hik_options = pm.lsUI(l=True, type="optionMenuGrp")
+    hik_options = cmds.lsUI(l=True, type="optionMenuGrp") or []
     character_list = None
     source_list = None
     
     for window in hik_options:
-        if 'hikCharacterList' in window.name():
+        if 'hikCharacterList' in window:
             character_list = window
-        elif 'hikSourceList' in window.name():
+        elif 'hikSourceList' in window:
             source_list = window
             
     return (character_list, source_list)
@@ -25,24 +30,24 @@ def _get_hik_windows():
 def _get_character_name(character):
     if isinstance(character, str):
         return character
-    elif isinstance(character, pm.nodetypes.HIKCharacterNode):
+    elif isinstance(character, Node) and character.type() == 'HIKCharacterNode':
         return character.name()
     elif character is None:
         return 'None'
     else:
-        pm.error("Can't get character name from: {}".format(character))
+        cmds.error("Can't get character name from: {}".format(character))
         
         
 def get_current_character():
     """Returns the name of the active hik character"""
     character_list, source_list = _get_hik_windows()
-    return pm.optionMenuGrp(character_list, query=True, value=True)
+    return cmds.optionMenuGrp(character_list, query=True, value=True)
 
 
 def get_current_source():
     """Returns the name of the active hik source"""
     character_list, source_list = _get_hik_windows()
-    source = pm.optionMenuGrp(source_list, query=True, value=True)
+    source = cmds.optionMenuGrp(source_list, query=True, value=True)
     
     if source == ' None':
         return SourceType.NONE
@@ -59,13 +64,13 @@ def get_character_source(character):
     character_list, source_list = _get_hik_windows()        
     character_name = _get_character_name(character)    
 
-    current_character = pm.optionMenuGrp(character_list, query=True, value=True)
+    current_character = cmds.optionMenuGrp(character_list, query=True, value=True)
     if current_character != character_name:
-        pm.optionMenuGrp(character_list, edit=True, value=character_name)
-        pm.mel.eval('hikUpdateCurrentCharacterFromUI()')
-        pm.mel.eval('hikUpdateContextualUI()')
+        cmds.optionMenuGrp(character_list, edit=True, value=character_name)
+        mel.eval('hikUpdateCurrentCharacterFromUI()')
+        mel.eval('hikUpdateContextualUI()')
         
-    return pm.optionMenuGrp(source_list, query=True, value=True)
+    return cmds.optionMenuGrp(source_list, query=True, value=True)
 
 
 def set_character(character):
@@ -74,11 +79,11 @@ def set_character(character):
     character_list, source_list = _get_hik_windows()        
     character_name = _get_character_name(character)
 
-    current_character = pm.optionMenuGrp(character_list, query=True, value=True)
+    current_character = cmds.optionMenuGrp(character_list, query=True, value=True)
     if current_character != character_name:
-        pm.optionMenuGrp(character_list, edit=True, value=character_name)
-        pm.mel.eval('hikUpdateCurrentCharacterFromUI()')
-        pm.mel.eval('hikUpdateContextualUI()')    
+        cmds.optionMenuGrp(character_list, edit=True, value=character_name)
+        mel.eval('hikUpdateCurrentCharacterFromUI()')
+        mel.eval('hikUpdateContextualUI()')
     
 
 def set_character_source(character, source: SourceType|str):
@@ -87,11 +92,11 @@ def set_character_source(character, source: SourceType|str):
     character_list, source_list = _get_hik_windows()        
     character_name = _get_character_name(character)
 
-    current_character = pm.optionMenuGrp(character_list, query=True, value=True)
+    current_character = cmds.optionMenuGrp(character_list, query=True, value=True)
     if current_character != character_name:
-        pm.optionMenuGrp(character_list, edit=True, value=character_name)
-        pm.mel.eval('hikUpdateCurrentCharacterFromUI()')
-        pm.mel.eval('hikUpdateContextualUI()')
+        cmds.optionMenuGrp(character_list, edit=True, value=character_name)
+        mel.eval('hikUpdateCurrentCharacterFromUI()')
+        mel.eval('hikUpdateContextualUI()')
            
     #I can't believe there's a prefix of ' ', but here we are  
     source_name = ''
@@ -106,18 +111,18 @@ def set_character_source(character, source: SourceType|str):
         if not source_name.startswith(' '):
             source_name = ' {}'.format(source_name)
     else:
-        pm.error('invalid source type: {}'.format(source))
+        cmds.error('invalid source type: {}'.format(source))
         
 
-    for menu_item in pm.optionMenuGrp(source_list, itemListLong=True, q=True):
-        menu_label = pm.menuItem(menu_item, label=True, q=True)
+    for menu_item in cmds.optionMenuGrp(source_list, itemListLong=True, q=True) or []:
+        menu_label = cmds.menuItem(menu_item, label=True, q=True)
         if menu_label.strip().lower() == source_name.strip().lower():
             source_name = menu_label
             break
  
     if character and source_list:
-        current_source = pm.optionMenuGrp(source_list, query=True, value=True)
+        current_source = cmds.optionMenuGrp(source_list, query=True, value=True)
         if current_source != source_name:
-            pm.optionMenuGrp(source_list, edit=True, value=source_name)
-            pm.mel.eval('hikUpdateCurrentSourceFromUI()')
-            pm.mel.eval('hikUpdateContextualUI()')
+            cmds.optionMenuGrp(source_list, edit=True, value=source_name)
+            mel.eval('hikUpdateCurrentSourceFromUI()')
+            mel.eval('hikUpdateContextualUI()')

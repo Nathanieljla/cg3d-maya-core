@@ -1,7 +1,11 @@
+from __future__ import annotations
+
 import re
 import enum
-import maya.cmds
-import pymel.core as pm
+from maya import cmds
+from maya.api import OpenMaya as om
+
+from ..maya import Node, node_name
 
 
 class Comp_Type(enum.Flag):
@@ -13,7 +17,7 @@ class Comp_Type(enum.Flag):
 
 def get_component_selection( comp_type: Comp_Type ):
     if not isinstance(comp_type, Comp_Type):
-        maya.OpenMaya.MGlobal.displayError( "Component_type must be of type Comp_Type" )
+        om.MGlobal.displayError("Component_type must be of type Comp_Type")
         return
     
     abbr = ''
@@ -26,7 +30,7 @@ def get_component_selection( comp_type: Comp_Type ):
         
 
     expression = re.compile( r'{0}\[((?P<num1>\d+):(?P<num2>\d+)\]|(?P<num3>\d+)\])'.format( abbr ) )
-    selection = maya.cmds.ls( sl = True )
+    selection = cmds.ls(sl=True)
     indices = []
 
     for item in selection:
@@ -60,22 +64,19 @@ def  get_component_selections():
 
 
 
-def plot_percent_on_curve(curve : pm.nodetypes.NurbsCurve,
-                          percent: float,
-                          marker : pm.nodetypes.Transform):
+def plot_percent_on_curve(curve: str | Node, percent: float, marker: str | Node):
     
     #I use a motion path constraint, because the percents are correct even
     #in cases where the curve isn't uniform.  E.g. one long span and two
     #short spans will put 50% 1/2 through span 2 when using PointOnCurve
     
-    motionPath = pm.createNode('motionPath')
-    motionPath.fractionMode.set(True)
-    curve.worldSpace[0] >> motionPath.geometryPath
-    motionPath.uValue.set(percent)
-    motionPath.allCoordinates >> marker.translate
-    motionPath.allCoordinates // marker.translate
-    pm.general.delete(motionPath)
+    curve_name = node_name(curve)
+    marker_name = node_name(marker)
+    motion_path = cmds.createNode('motionPath')
+    cmds.setAttr(motion_path + '.fractionMode', True)
+    cmds.connectAttr(curve_name + '.worldSpace[0]', motion_path + '.geometryPath')
+    cmds.setAttr(motion_path + '.uValue', percent)
+    cmds.connectAttr(motion_path + '.allCoordinates', marker_name + '.translate')
+    cmds.disconnectAttr(motion_path + '.allCoordinates', marker_name + '.translate')
+    cmds.delete(motion_path)
         
-    
-    
-print("cg3dguru.utils.modeling loaded")
